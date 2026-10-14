@@ -1,6 +1,6 @@
 # ADR-0004: Call Claude only through our backend, only for flagged findings
 
-- Status: Accepted
+- Status: Superseded by ADR-0008 (no AI explanation; Worker removed)
 - Date: 2026-10-14
 
 ## Context

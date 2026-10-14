@@ -1,7 +1,7 @@
-// E2E: real Chrome (set CHROME_PATH) + unpacked extension, checks MVP acceptance criteria 1-6.
+// E2E: real Chrome (set CHROME_PATH) + unpacked extension, checks the MVP acceptance criteria.
 // Run: npm run e2e. Needs openssl on PATH. SHOTS=<dir> also saves store screenshots.
-// A local proxy serves the test dApp for every host and refuses the Worker host, so the Worker is
-// "unreachable" (criterion 5) and every Worker call is counted (criterion 6).
+// All traffic goes through a local proxy that serves the test dApp for every host and records each
+// host contacted, so we can prove the extension itself never talks to the network.
 import puppeteer from "puppeteer-core";
 import http from "node:http";
 import https from "node:https";
@@ -19,15 +19,15 @@ const CHROME = process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Applic
 // Throwaway self-signed cert so HTTPS-only hosts (HSTS) can be served locally.
 const tmp = mkdtempSync(join(tmpdir(), "shield-e2e-"));
 execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(tmp, "key.pem"), "-out", join(tmp, "cert.pem"), "-days", "1", "-subj", "/CN=test"], { stdio: "ignore", env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
-const connects = [];
-const proxy = http.createServer((req, res) => res.writeHead(200, { "content-type": "text/html" }).end(DAPP));
+const contacted = new Set();
+const visited = new Set();
+const proxy = http.createServer((req, res) => (contacted.add(new URL(req.url).hostname), res.writeHead(200, { "content-type": "text/html" }).end(DAPP)));
 const serve = (req, res) => res.writeHead(200, { "content-type": "text/html" }).end(DAPP);
 const tls = https.createServer({ key: readFileSync(join(tmp, "key.pem")), cert: readFileSync(join(tmp, "cert.pem")) }, serve);
 await new Promise((r) => tls.listen(0, "127.0.0.1", r));
-// HTTPS pages tunnel to the local TLS server; the Worker host is logged and refused (= unreachable).
+// HTTPS pages tunnel to the local TLS server.
 proxy.on("connect", (req, sock) => {
-	connects.push(req.url);
-	if (req.url.startsWith("shield-api.")) return sock.destroy();
+	contacted.add(req.url.split(":")[0]);
 	const up = net.connect(tls.address().port, "127.0.0.1", () => (sock.write("HTTP/1.1 200 OK\r\n\r\n"), up.pipe(sock), sock.pipe(up)));
 	up.on("error", () => sock.destroy());
 	sock.on("error", () => up.destroy());
@@ -67,6 +67,7 @@ const overlayShown = (page) => page.evaluate(() => !!document.querySelector("aet
 const log = (page) => page.$eval("#log", (e) => e.textContent);
 
 async function visit(host, path = "/") {
+	visited.add(host);
 	const page = await browser.newPage();
 	await page.setViewport({ width: 1280, height: 800 });
 	await page.goto(`http://${host}${path}`, { waitUntil: "domcontentloaded" });
@@ -81,11 +82,7 @@ for (const [host, want] of [["indodaz.com", true], ["xn--ndodax-9ra.com", true],
 	await page.close();
 }
 
-// Acceptance 6: unflagged pages make no outbound request.
-connects.length = 0;
 for (const h of ["indodax.com", "example.com"]) await (await visit(h)).close();
-const outbound = connects.filter((c) => c.startsWith("shield-api."));
-check("no Worker request on unflagged pages", outbound.length === 0, JSON.stringify(outbound));
 
 // "Keluar dari situs ini" leaves the page.
 {
@@ -135,7 +132,11 @@ for (const name of cases) {
 	await sleep(200);
 	check("Lanjutkan forwards to wallet", (await log(page)).includes("wallet opened"));
 }
-console.log("Worker calls (refused):", connects.filter((c) => c.startsWith("shield-api.")).length);
+// Acceptance 6, stricter now that there is no API: the extension sends nothing anywhere, flagged page or not.
+// Chrome itself phones Google (updates, accounts); test/privacy.test.js covers the extension code statically.
+const CHROME_OWN = /(^|\.)(google\.com|googleapis\.com|gstatic\.com)$/;
+const strangers = [...contacted].filter((h) => !visited.has(h) && !CHROME_OWN.test(h));
+check("no network request except the pages themselves", strangers.length === 0, JSON.stringify(strangers));
 
 await browser.close();
 proxy.close();

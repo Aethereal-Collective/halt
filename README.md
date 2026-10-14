@@ -1,11 +1,11 @@
 # Aethereal Shield
 
-Browser extension that protects Indonesian crypto users from phishing sites and wallet drainers, with warnings explained in Bahasa Indonesia.
+Browser extension that protects Indonesian crypto users from phishing sites and wallet drainers, with warnings explained in Bahasa Indonesia. Runs fully on-device: no server, no network calls.
 
 - **Domain Shield:** blocks known and lookalike phishing domains (e.g. `indodaz.com` vs `indodax.com`).
 - **Transaction Guard (EVM):** pauses unlimited approvals, approval-for-all, Permit/Permit2 signatures, zero-value NFT listings, and `eth_sign`.
 - **Local model:** a small hostname classifier trained on licensed public phishing lists flags pattern-based drainer domains, on-device (ADR-0006).
-- **AI explanation:** Claude explains each warning in plain Bahasa Indonesia, through our own API.
+- **Plain-language warnings:** each warning says what will happen to your money and what to do, in Bahasa Indonesia.
 
 Docs: [Spec](docs/SPEC.md) · [MVP plan](docs/MVP.md) · [ADRs](docs/adr/) · [Data sources](docs/sources.md) · [Privacy policy](docs/privacy-policy.md) · [Store listing](docs/store-listing.md)
 
@@ -14,17 +14,16 @@ Docs: [Spec](docs/SPEC.md) · [MVP plan](docs/MVP.md) · [ADRs](docs/adr/) · [D
 ```
 extension/
   manifest.json        MV3 manifest
-  src/background.js    service worker: lists, domain check, badge, /explain proxy
+  src/background.js    service worker: lists, domain check, badge
   src/content.js       content script: inject guard, overlay + modal UI
   src/inpage.js        page-world guard: wraps EIP-1193 providers
   src/lib/domain.js    pure domain checks
   src/lib/tx.js        pure EVM request analysis
   src/lib/model.js     pure hostname model (weights in lists/model.json)
-  src/config.js        API + report URLs
+  src/config.js        report URL
   lists/               brands, allowlist, blocklist, model
   icons/               toolbar and store icons
   popup/               toolbar popup
-worker/                Cloudflare Worker: POST /explain -> Claude
 test/                  node --test unit tests for lib/
 test/dapp/             test dApp: one button per flagged request (?mock = fake wallet)
 test/e2e/              real-Chrome E2E for the MVP acceptance criteria
@@ -46,20 +45,7 @@ Manual wallet test: `npx serve test/dapp`, open it with MetaMask/Rabby/OKX/Phant
 
 Load the extension: `chrome://extensions` → enable Developer mode → **Load unpacked** → select `extension/`.
 
-Try it: temporarily add `example.com` to `extension/lists/blocklist.json`, reload the extension, and open `https://example.com` to see the overlay. The AI box stays hidden until the Worker is deployed.
-
-## Worker
-
-```bash
-cd worker
-npm install
-npx wrangler kv namespace create CACHE      # paste the id into wrangler.toml
-npx wrangler secret put ANTHROPIC_API_KEY
-# set ALLOWED_ORIGIN in wrangler.toml to chrome-extension://<your extension id>
-npm run deploy
-```
-
-Then set `EXPLAIN_URL` in `extension/src/config.js` to the deployed URL.
+Try it: temporarily add `example.com` to `extension/lists/blocklist.json`, reload the extension, and open `https://example.com` to see the overlay.
 
 ## Release
 

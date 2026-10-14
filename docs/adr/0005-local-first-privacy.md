@@ -9,7 +9,7 @@ Checking every visited site against a server would reveal the user's full browsi
 ## Decision
 - All domain checks run in the service worker against lists bundled in the extension.
 - No network call happens for unflagged pages.
-- Only when a page or request is flagged is a minimal finding sent for explanation (ADR-0004).
+- Nothing is sent off the device, flagged or not (ADR-0008 removed the explanation call from ADR-0004).
 - When the list grows too large to bundle (rough threshold: more than about 5 MB), switch to downloading a compact list (Bloom filter or sorted hash prefixes) and confirming full matches with a hash-prefix query. Never send plain URLs.
 
 ## Consequences

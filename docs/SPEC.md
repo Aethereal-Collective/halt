@@ -69,10 +69,9 @@ Wraps `window.ethereum.request` and EIP-6963 providers in the page context (ADR-
 
 Flagged requests pause until the user picks **Tolak** (default, primary button) or **Lanjutkan ke wallet**. A rejection throws EIP-1193 error `4001`, so dApps treat it like a wallet rejection.
 
-### F3 · AI Explanation (Claude)
-- Every warning shows static Bahasa Indonesia copy immediately.
-- In parallel, the finding (never the full URL, page content, or the user's address) is sent to the Aethereal API (Cloudflare Worker, see ADR-0004). The Worker calls Claude and returns `{ explanation, action }`, shown under the static copy.
-- 8 s timeout. On any failure the static copy stands alone; the warning never waits for the AI.
+### F3 · Explanation (static, on-device)
+- Every warning shows Bahasa Indonesia copy written by us: what the request does, the decoded facts (spender, token, amount), and what to do next (`COPY.actions` in `content.js`).
+- No AI service and no network call (ADR-0008).
 
 ### F4 · Report
 - Popup button "Laporkan situs mencurigakan" opens the report channel (Discord in MVP).
@@ -159,37 +158,31 @@ Rules for the list:
 │                               │ lib/domain.js        │              │
 │                               │ lists/*.json         │              │
 │                               │ badge, session store │              │
-│                               └─────────┬────────────┘              │
-└─────────────────────────────────────────┼───────────────────────────┘
-                                          │ HTTPS, finding only
-                                ┌─────────▼────────────┐   ┌──────────┐
-                                │ Cloudflare Worker    │──▶│ Claude   │
-                                │ /explain             │   │ API      │
-                                │ holds API key        │   └──────────┘
-                                └──────────────────────┘
+│                               └──────────────────────┘              │
+└─────────────────────────────────────────────────────────────────────┘
+                No network calls: everything runs on-device.
 ```
 
 | Component | File | Responsibility |
 |---|---|---|
 | Domain logic | `extension/src/lib/domain.js` | Pure function `checkDomain(host, lists)` |
 | Tx logic | `extension/src/lib/tx.js` | Pure function `analyzeRequest({method, params})` |
-| Service worker | `extension/src/background.js` | Load lists, run domain check, badge, proxy `/explain` |
+| Service worker | `extension/src/background.js` | Load lists, run domain check, badge |
 | Content script | `extension/src/content.js` | Inject guard, render overlay/modal, relay decisions |
 | In-page guard | `extension/src/inpage.js` | Wrap EIP-1193 providers, pause risky calls |
 | Popup | `extension/popup/` | Current tab status, report link |
-| API | `worker/src/index.js` | Validate finding, call Claude, return JSON |
 
 ## 6. Data & privacy
 
 | Data | Leaves device? | Notes |
 |---|---|---|
 | Visited URLs / hostnames | **No** | Domain checks run locally against bundled lists |
-| Hostname of a flagged site | Yes, only when flagged | Sent with the finding for the explanation |
-| Transaction finding (method, spender, token, amount) | Yes, only when flagged | No user address, no full calldata |
+| Hostname of a flagged site | **No** | Warnings are rendered locally |
+| Transaction finding (method, spender, token, amount) | **No** | Decoded and shown locally |
 | Wallet address, balances, keys | **Never** | |
 | Legality check (F5) and page heuristics (v0.2) | **No** | Runs locally against `licensed.json`; page text is never sent |
 
-The Worker logs no request bodies. The privacy policy must state the table above before Chrome Web Store submission.
+The extension makes no network requests at all (enforced by `test/privacy.test.js` and the E2E). The privacy policy must state the table above before Chrome Web Store submission.
 
 ## 7. Threat model (summary)
 
@@ -199,10 +192,8 @@ The Worker logs no request bodies. The privacy policy must state the table above
 | Malicious page spoofs the "allow" postMessage | Guard skipped | Same root cause as above. Accepted for MVP; the in-page guard is advisory. |
 | Extension supply-chain compromise (stolen CWS account, malicious update) | Catastrophic: every user exposed | 2FA plus hardware key on the CWS account, release checklist, no remote code, minimal permissions, reproducible zip from tagged commit. |
 | False positive on a legitimate site | Reputation, complaints | Warn level for weaker signals; danger only for blocklist or lookalike; appeal channel; allowlist fast-track. |
-| API abuse (cost) | Bill spike | Origin check, 4 KB body limit, per-IP rate limit (20/min), KV cache of explanations by finding hash (7 days). |
 | Stale OJK whitelist (entity loses or gains a license) | Wrong "Berizin OJK" badge | `verifiedAt` shown in the popup; stale warning after 60 days; refresh within 7 days of an OJK update |
 | Illegal platform copies a licensed brand's name on its own domain | User trusts a fake | Licensed entities are protected brands (F1 lookalike/keyword), and the badge only appears on exact official domains |
-| Prompt injection via finding fields | Misleading explanation | Findings are structured and short; static copy always shown; the model is told not to go beyond the data. |
 
 ## 8. UX copy principles
 - Bahasa Indonesia, second person ("kamu"), short sentences.
@@ -228,7 +219,7 @@ The Worker logs no request bodies. The privacy policy must state the table above
 ## 11. Roadmap
 
 - **v0.1 (MVP):**
-  - F1, F2 (EVM), F3, F4 (link).
+  - F1, F2 (EVM), F3 (static copy), F4 (link).
   - F5 basics: licensed badge, licensed brands protected from lookalikes, Satgas PASTI banner for listed global exchanges.
 - **v0.2:**
   - Solana (wallet-standard `signTransaction`: flag `SetAuthority` / owner changes).

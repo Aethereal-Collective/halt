@@ -9,7 +9,7 @@ Aethereal Shield adalah ekstensi browser dari Aethereal (aethereal.top) yang mem
 ## Ringkasnya
 
 - Pemeriksaan situs dilakukan **di perangkat kamu**. Daftar situs yang kamu kunjungi tidak pernah dikirim ke mana pun.
-- Data hanya keluar dari perangkat saat ada **peringatan**, dan hanya ringkasan temuannya, untuk membuat penjelasan dalam Bahasa Indonesia.
+- Peringatan dan penjelasannya juga dibuat **di perangkat kamu**. Ekstensi ini tidak mengirim data apa pun ke server kami atau pihak lain.
 - Kami **tidak pernah** mengambil alamat wallet, saldo, seed phrase, atau private key kamu.
 
 ## Data yang diproses
@@ -17,22 +17,18 @@ Aethereal Shield adalah ekstensi browser dari Aethereal (aethereal.top) yang mem
 | Data | Keluar dari perangkat? | Keterangan |
 |---|---|---|
 | Alamat situs yang kamu kunjungi | **Tidak** | Dicek di perangkat terhadap daftar dan model yang ada di dalam ekstensi. |
-| Nama domain situs yang diperingatkan | Ya, hanya saat ada peringatan | Dikirim bersama temuan untuk membuat penjelasan. Bukan URL lengkap. |
-| Ringkasan permintaan transaksi yang diperingatkan (jenis permintaan, alamat kontrak penerima izin, token, jumlah) | Ya, hanya saat ada peringatan | Tanpa alamat wallet kamu dan tanpa data transaksi lengkap. |
+| Nama domain situs yang diperingatkan | **Tidak** | Peringatan ditampilkan langsung oleh ekstensi. |
+| Permintaan transaksi yang diperingatkan | **Tidak** | Dibaca dan ditampilkan di perangkat kamu. |
 | Alamat wallet, saldo, seed phrase, private key | **Tidak pernah** | |
 | Isi halaman, formulir, kata sandi | **Tidak pernah** | |
 
 Hasil pemeriksaan per tab disimpan sementara di browser kamu (`chrome.storage.session`) agar bisa ditampilkan di popup, dan terhapus saat browser ditutup.
 
-## Ke mana data peringatan dikirim
+## Ke mana data dikirim
 
-1. **Server Aethereal** (Cloudflare Workers) menerima ringkasan temuan, lalu meneruskannya ke Claude.
-   - Kami tidak menyimpan isi permintaan di log.
-   - Penjelasan yang dihasilkan disimpan hingga 7 hari dengan kunci berupa hash dari temuan, supaya temuan yang sama tidak diproses ulang.
-   - Alamat IP kamu dipakai sesaat untuk membatasi jumlah permintaan (anti-penyalahgunaan) dan tidak kami simpan.
-2. **Anthropic** (penyedia model Claude) memproses ringkasan temuan untuk menulis penjelasan, sesuai kebijakan data API Anthropic.
+Tidak ke mana pun. Ekstensi tidak punya server dan tidak membuat permintaan jaringan. Daftar situs phishing dan model pendeteksi ikut terpasang di dalam ekstensi dan diperbarui lewat pembaruan ekstensi di Chrome Web Store.
 
-Kalau server tidak bisa dihubungi, peringatan tetap muncul dengan teks bawaan ekstensi.
+Tautan "Laporkan" hanya membuka halaman komunitas kami di tab baru; apa yang kamu tulis di sana tunduk pada kebijakan platform tersebut.
 
 ## Yang tidak kami lakukan
 

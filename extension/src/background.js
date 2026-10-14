@@ -1,6 +1,6 @@
 import { checkDomain, LEVEL } from "./lib/domain.js";
 import { loadModel } from "./lib/model.js";
-import { EXPLAIN_URL, EXPLAIN_TIMEOUT_MS, REPORT_URL } from "./config.js";
+import { REPORT_URL } from "./config.js";
 
 // ponytail: lists ship inside the extension. Add a signed remote list on chrome.alarms once the local list outgrows releases.
 let listsPromise;
@@ -44,22 +44,5 @@ const handlers = {
 
 	async getTabVerdict({ tabId }) {
 		return (await chrome.storage.session.get("tab:" + tabId))["tab:" + tabId] ?? null;
-	},
-
-	// Only findings go out: host + finding codes/details. Never the full URL, page content, or the user's address.
-	async explain({ finding }) {
-		const ctrl = new AbortController();
-		const timer = setTimeout(() => ctrl.abort(), EXPLAIN_TIMEOUT_MS);
-		try {
-			const res = await fetch(EXPLAIN_URL, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(finding),
-				signal: ctrl.signal,
-			});
-			return res.ok ? await res.json() : null;
-		} finally {
-			clearTimeout(timer);
-		}
 	},
 };
