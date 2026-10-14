@@ -1,0 +1,22 @@
+[
+	{ "name": "Indodax", "domains": ["indodax.com"] },
+	{ "name": "Tokocrypto", "domains": ["tokocrypto.com"] },
+	{ "name": "Pintu", "domains": ["pintu.co.id"] },
+	{ "name": "Reku", "domains": ["reku.id"] },
+	{ "name": "Binance", "domains": ["binance.com"] },
+	{ "name": "OKX", "domains": ["okx.com"] },
+	{ "name": "Bybit", "domains": ["bybit.com"] },
+	{ "name": "Coinbase", "domains": ["coinbase.com"] },
+	{ "name": "MetaMask", "domains": ["metamask.io"] },
+	{ "name": "Phantom", "domains": ["phantom.app", "phantom.com"] },
+	{ "name": "Rabby", "domains": ["rabby.io"] },
+	{ "name": "Ledger", "domains": ["ledger.com"] },
+	{ "name": "Trezor", "domains": ["trezor.io"] },
+	{ "name": "Uniswap", "domains": ["uniswap.org"] },
+	{ "name": "PancakeSwap", "domains": ["pancakeswap.finance"] },
+	{ "name": "OpenSea", "domains": ["opensea.io"] },
+	{ "name": "Magic Eden", "domains": ["magiceden.io"] },
+	{ "name": "Raydium", "domains": ["raydium.io"] },
+	{ "name": "Jupiter", "domains": ["jup.ag"] },
+	{ "name": "Aave", "domains": ["aave.com"] }
+]

@@ -1,0 +1,15 @@
+{
+	"name": "aethereal-shield",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "node --test \"test/*.test.js\"",
+		"e2e": "node test/e2e/run.mjs",
+		"release": "node scripts/release.mjs",
+		"train": "node scripts/fetch-data.mjs && node --max-old-space-size=6000 scripts/train.mjs",
+		"blocklist": "node scripts/fetch-data.mjs && node scripts/build-blocklist.mjs"
+	},
+	"devDependencies": {
+		"puppeteer-core": "^24.0.0"
+	}
+}

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Shield test dApp</title>
+		<style>
+			body { font: 14px/1.5 system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+			button { display: block; width: 100%; margin: 6px 0; padding: 10px; text-align: left; font: inherit; cursor: pointer; }
+			pre { background: #f4f4f5; padding: 12px; white-space: pre-wrap; word-break: break-all; }
+		</style>
+	</head>
+	<body>
+		<h1>Shield test dApp</h1>
+		<p>Each button sends one request the guard should flag (plus two it should not). Serve over http (e.g. <code>npx serve test/dapp</code>), not file://.
+			Add <code>?mock</code> to use a fake wallet that logs instead of opening a popup.</p>
+		<p>Wallet: <b id="wallet"></b></p>
+		<div id="buttons"></div>
+		<pre id="log"></pre>
+		<script>
+			const ME = "0x2222222222222222222222222222222222222222";
+			const SPENDER = "1111111111111111111111111111111111111111";
+			const TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7"; // USDT
+			const pad = (hex) => hex.padStart(64, "0");
+			const tx = (data) => ({ method: "eth_sendTransaction", params: [{ from: ME, to: TOKEN, data }] });
+			const typed = (t) => ({ method: "eth_signTypedData_v4", params: [ME, JSON.stringify(t)] });
+
+			const CASES = {
+				"connect wallet (not flagged)": { method: "eth_requestAccounts" },
+				"approve MAX (high)": tx("0x095ea7b3" + pad(SPENDER) + "f".repeat(64)),
+				"approve 100 (medium)": tx("0x095ea7b3" + pad(SPENDER) + pad("64")),
+				"increaseAllowance MAX (high)": tx("0x39509351" + pad(SPENDER) + "f".repeat(64)),
+				"setApprovalForAll true (critical)": tx("0xa22cb465" + pad(SPENDER) + pad("1")),
+				"Permit2 approve (high)": tx("0x87517c45" + pad(TOKEN.slice(2)) + pad(SPENDER) + "f".repeat(64) + pad("0")),
+				"EIP-2612 Permit signature (high)": typed({ primaryType: "Permit", domain: { name: "USD Coin", verifyingContract: TOKEN }, message: { owner: ME, spender: "0x" + SPENDER, value: "1" } }),
+				"Permit2 PermitSingle signature (high)": typed({ primaryType: "PermitSingle", domain: { name: "Permit2" }, message: { spender: "0x" + SPENDER } }),
+				"Seaport listing for 0 (critical)": typed({ primaryType: "OrderComponents", message: { offerer: ME, offer: [{ itemType: 2 }], consideration: [{ recipient: "0x" + SPENDER }] } }),
+				"eth_sign (critical)": { method: "eth_sign", params: [ME, "0x" + "ab".repeat(32)] },
+				"[not flagged] approve 0 (revoke)": tx("0x095ea7b3" + pad(SPENDER) + pad("0")),
+				"[not flagged] eth_chainId": { method: "eth_chainId" },
+			};
+
+			const log = (line) => (document.getElementById("log").textContent += line + "\n");
+
+			// Fake wallet: any request that reaches it means the guard let it through.
+			if (location.search.includes("mock") || !window.ethereum) {
+				window.ethereum = { isMock: true, async request({ method }) { log(`  wallet opened for ${method}`); return method === "eth_chainId" ? "0x1" : "0xok"; } };
+			}
+			document.getElementById("wallet").textContent = window.ethereum.isMock ? "mock" : "injected";
+
+			for (const [name, req] of Object.entries(CASES)) {
+				const b = document.createElement("button");
+				b.textContent = name;
+				b.onclick = async () => {
+					log(`> ${name}`);
+					try {
+						const res = await window.ethereum.request(req);
+						log(`  ok: ${JSON.stringify(res)}`);
+					} catch (e) {
+						log(`  error ${e.code}: ${e.message}`);
+					}
+				};
+				document.getElementById("buttons").appendChild(b);
+			}
+		</script>
+	</body>
+</html>

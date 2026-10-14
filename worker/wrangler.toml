@@ -1,0 +1,21 @@
+name = "aethereal-shield-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Set to the published extension's origin, e.g. chrome-extension://abcdefghijklmnopabcdefghijklmnop
+ALLOWED_ORIGIN = "chrome-extension://REPLACE_ME"
+
+# Secret, not a var: `npx wrangler secret put ANTHROPIC_API_KEY`
+
+# 20 explanations per minute per IP. namespace_id is any number unique within the account.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+# Create with `npx wrangler kv namespace create CACHE`, then paste the id here.
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_ME"
