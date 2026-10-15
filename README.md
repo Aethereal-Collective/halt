@@ -28,6 +28,7 @@ test/                  node --test unit tests for lib/
 test/dapp/             test dApp: one button per flagged request (?mock = fake wallet)
 test/e2e/              real-Chrome E2E for the MVP acceptance criteria
 scripts/               fetch-data + train (model), build-blocklist, release (zip from tag)
+site/                  landing page + privacy policy (Nuxt, static), served at aethereal.top/shield/
 ```
 
 ## Develop
@@ -46,6 +47,17 @@ Manual wallet test: `npx serve test/dapp`, open it with MetaMask/Rabby/OKX/Phant
 Load the extension: `chrome://extensions` → enable Developer mode → **Load unpacked** → select `extension/`.
 
 Try it: temporarily add `example.com` to `extension/lists/blocklist.json`, reload the extension, and open `https://example.com` to see the overlay.
+
+## Landing page
+
+```bash
+cd site
+npm install
+npm run dev                   # http://localhost:3000/shield/
+npm run generate              # static files in site/.output/public -> upload to aethereal.top/shield/
+```
+
+The privacy page renders `docs/privacy-policy.md`, so edit the policy there. Set `cwsUrl` in `site/app/app.config.ts` once the store listing is live.
 
 ## Release
 

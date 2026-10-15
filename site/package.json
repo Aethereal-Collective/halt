@@ -1,0 +1,15 @@
+{
+	"name": "aethereal-shield-site",
+	"scripts": {
+		"dev": "nuxt dev",
+		"generate": "nuxt generate",
+		"preview": "nuxt preview",
+		"postinstall": "nuxt prepare"
+	},
+	"type": "module",
+	"dependencies": {
+		"marked": "^18.1.1",
+		"nuxt": "^4.6.1"
+	},
+	"private": true
+}

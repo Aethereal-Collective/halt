@@ -36,6 +36,5 @@ Daftar phishing dari MetaMask eth-phishing-detect dan Polkadot.js phishing (Apac
 - Privacy policy URL: https://aethereal.top/shield/privacy (`docs/privacy-policy.md`).
 
 ## Assets still needed
-- Icon 128×128 (and 16/32/48 in `manifest.json`; no icons exist yet).
 - At least 1 screenshot 1280×800: the danger overlay on a lookalike domain, and the transaction modal.
 - Small promo tile 440×280.
