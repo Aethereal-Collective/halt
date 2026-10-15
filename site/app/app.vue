@@ -1,22 +1,8 @@
 <template>
-	<header class="nav wrap">
-		<NuxtLink to="/" class="brand"><img src="~/assets/icon.png" alt="" width="28" height="28" />Aethereal Shield</NuxtLink>
-		<nav>
-			<NuxtLink to="/#cara-kerja">Cara kerja</NuxtLink>
-			<NuxtLink to="/#faq">FAQ</NuxtLink>
-		</nav>
-	</header>
-	<NuxtPage />
-	<footer class="wrap foot">
-		<p>Aethereal Shield adalah produk <a href="https://aethereal.top">Aethereal</a>, Jakarta.</p>
-		<p>
-			<NuxtLink to="/privacy">Kebijakan privasi</NuxtLink> ·
-			<a :href="reportUrl" target="_blank" rel="noopener noreferrer">Laporkan situs</a>
-		</p>
-		<p class="muted">Daftar phishing dari MetaMask eth-phishing-detect dan Polkadot.js phishing (Apache-2.0). Model lokal juga dilatih dengan Phishing.Database (MIT) dan Majestic Million (CC BY 3.0).</p>
-	</footer>
+	<SiteHeader />
+	<!-- White page on top; on desktop the bottom margin reveals the fixed footer underneath. -->
+	<div id="top" class="relative z-10 bg-white shadow-[0_30px_60px_-20px_rgba(0,0,0,0.25)] lg:mb-[720px]">
+		<NuxtPage />
+	</div>
+	<SiteFooter />
 </template>
-
-<script setup>
-const { reportUrl } = useAppConfig();
-</script>
