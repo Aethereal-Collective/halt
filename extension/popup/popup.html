@@ -3,19 +3,47 @@
 	<head>
 		<meta charset="utf-8" />
 		<style>
-			body { width: 280px; margin: 0; padding: 16px; font: 14px/1.5 system-ui, sans-serif; background: #09090b; color: #fafafa; }
-			h1 { font-size: 15px; margin: 0 0 12px; }
-			.status { padding: 12px; border-radius: 10px; background: #18181b; }
-			.safe { border-left: 4px solid #16a34a; } .warn { border-left: 4px solid #d97706; } .danger { border-left: 4px solid #dc2626; }
-			.host { color: #a1a1aa; font-size: 12px; word-break: break-all; }
-			a { display: block; margin-top: 12px; color: #a1a1aa; }
+			@font-face { font-family: HaltSans; src: url("../fonts/PlusJakartaSans.woff2") format("woff2"); font-weight: 200 800; }
+			* { box-sizing: border-box; margin: 0; }
+			body { width: 320px; background: #0a0a0a; color: #f0f0f0; font: 400 14px/1.5 HaltSans, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+			.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+			header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #1c1c1c; }
+			.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; letter-spacing: -0.04em; }
+			.brand svg { width: 16px; height: 20px; fill: #f0f0f0; }
+			.lang { display: flex; padding: 2px; border: 1px solid #262626; border-radius: 999px; }
+			.lang button { appearance: none; border: 0; background: none; cursor: pointer; color: #737373; font: 700 11px/1 HaltSans, ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.08em; padding: 6px 10px; border-radius: 999px; }
+			.lang button[aria-pressed="true"] { background: #f0f0f0; color: #0a0a0a; }
+			main { padding: 22px 18px 20px; }
+			.label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #737373; }
+			.status { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 20px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.25; }
+			.dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #525252; }
+			.safe .dot { background: #22c55e; } .warn .dot { background: #eab308; } .danger .dot { background: #ef4444; }
+			.host { margin-top: 6px; font-size: 12px; color: #737373; word-break: break-all; }
+			footer { padding: 14px 18px 16px; border-top: 1px solid #1c1c1c; font-size: 12px; color: #525252; }
+			footer a { display: inline-block; margin-bottom: 8px; color: #d4d4d4; font-weight: 600; text-underline-offset: 3px; }
+			button:focus-visible, a:focus-visible { outline: 2px solid #f0f0f0; outline-offset: 2px; }
 		</style>
 	</head>
 	<body>
-		<h1>Aethereal Shield</h1>
-		<div id="status" class="status">Memeriksa…</div>
-		<a id="report" href="#" target="_blank" rel="noopener noreferrer">Laporkan situs mencurigakan</a>
-		<p class="host">Bukan jaminan keamanan. Selalu cek ulang alamat situs.</p>
+		<header>
+			<div class="brand">
+				<svg viewBox="0 0 100 124" aria-hidden="true"><path d="M0 14 L12 8 V86 Q6 80 0 70Z" /><path d="M20 6 L42 0 V114 Q28 104 20 94Z" /><path d="M50 0 L100 12 V70 Q94 104 50 124Z" /></svg>
+				<span>halt</span>
+			</div>
+			<div class="lang" role="group" id="lang">
+				<button data-lang="id" aria-pressed="false">ID</button>
+				<button data-lang="en" aria-pressed="false">EN</button>
+			</div>
+		</header>
+		<main id="main">
+			<p class="label" id="statusLabel"></p>
+			<p class="status" id="status"><span class="dot"></span><span id="statusText"></span></p>
+			<p class="host mono" id="host"></p>
+		</main>
+		<footer>
+			<a id="report" href="#" target="_blank" rel="noopener noreferrer"></a>
+			<p id="disclaimer"></p>
+		</footer>
 		<script type="module" src="popup.js"></script>
 	</body>
 </html>

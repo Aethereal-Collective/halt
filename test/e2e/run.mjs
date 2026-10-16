@@ -6,7 +6,7 @@ import puppeteer from "puppeteer-core";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const DAPP = readFileSync(join(ROOT, "test/dapp/index.html"));
+const SHOTS = process.env.SHOTS || process.argv[2]; // screenshot folder (env or first argument)
+if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const CHROME = process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
 // Throwaway self-signed cert so HTTPS-only hosts (HSTS) can be served locally.
@@ -48,7 +50,7 @@ console.log("extension", extId);
 const results = [];
 const check = (name, ok, extra = "") => (results.push(ok), console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? "  " + extra : ""}`));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const shot = (page, name) => process.env.SHOTS && page.screenshot({ path: join(process.env.SHOTS, `${name}.png`) });
+const shot = (page, name) => SHOTS && page.screenshot({ path: join(SHOTS, `${name}.png`) });
 
 // Closed shadow root: only CDP with pierce can see inside.
 async function shieldButton(page, action) {
@@ -63,7 +65,31 @@ async function shieldButton(page, action) {
 		await page.mouse.click((x1 + x2) / 2, (y1 + y2) / 2);
 	};
 }
+// Screenshot just one element of the closed shadow root (found by class), for the store listing.
+async function shotPart(page, cls, name) {
+	if (!SHOTS) return;
+	const cdp = await page.createCDPSession();
+	const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+	const find = (n) => (n.attributes?.some((a) => a.split(" ").includes(cls)) ? n : [...(n.children || []), ...(n.shadowRoots || [])].map(find).find(Boolean));
+	const { model } = await cdp.send("DOM.getBoxModel", { nodeId: find(root).nodeId });
+	const [x1, y1, , , x2, y2] = model.border;
+	await page.screenshot({ path: join(SHOTS, `${name}.png`), clip: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 } });
+}
 const overlayShown = (page) => page.evaluate(() => !!document.querySelector("aethereal-shield"));
+// All text inside the closed shadow root, via CDP.
+async function shieldText(page) {
+	const cdp = await page.createCDPSession();
+	const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+	const out = [];
+	const walk = (n) => (n.nodeType === 3 && out.push(n.nodeValue), [...(n.children || []), ...(n.shadowRoots || [])].forEach(walk));
+	walk(root);
+	return out.join(" ");
+}
+// Language setting lives in chrome.storage.local, written by the popup; set it from the service worker.
+async function setLang(lang) {
+	const sw = await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().includes(extId));
+	await (await sw.worker()).evaluate((l) => chrome.storage.local.set({ lang: l }), lang);
+}
 const log = (page) => page.$eval("#log", (e) => e.textContent);
 
 async function visit(host, path = "/") {
@@ -94,6 +120,50 @@ for (const h of ["indodax.com", "example.com"]) await (await visit(h)).close();
 	await page.close();
 }
 
+if (SHOTS) {
+	// The popup reads the verdict of its own (active) tab; seed one so the shot shows a real danger state.
+	const popup = await browser.newPage();
+	await popup.setViewport({ width: 320, height: 200, deviceScaleFactor: 2 });
+	await popup.goto(`chrome-extension://${extId}/popup/popup.html`);
+	await popup.evaluate(async () => {
+		const tab = await chrome.tabs.getCurrent();
+		await chrome.storage.session.set({ ["tab:" + tab.id]: { host: "indodaz.com", level: "danger", reasons: [{ code: "lookalike", brand: "Indodax" }] } });
+	});
+	for (const lang of ["id", "en"]) {
+		await popup.evaluate((l) => chrome.storage.local.set({ lang: l }), lang);
+		await popup.reload();
+		await sleep(500);
+		await popup.screenshot({ path: join(SHOTS, `popup-${lang}.png`), fullPage: true });
+	}
+	await popup.evaluate(() => chrome.storage.local.set({ lang: "id" }));
+	await popup.close();
+}
+
+// Language setting: English copy after switching, Indonesian again after switching back.
+{
+	await setLang("en");
+	const page = await visit("indodaz.com");
+	check("English overlay after switching language", (await shieldText(page)).includes("This site is likely phishing"));
+	await shot(page, "overlay-lookalike-en");
+	await page.close();
+	if (SHOTS) {
+		// English modal for the store listing.
+		const dapp = await visit("dapp.test", "/?mock");
+		await dapp.evaluate(() => [...document.querySelectorAll("#buttons button")].find((b) => b.textContent.startsWith("approve MAX")).click());
+		let reject;
+		for (let i = 0; !reject && i < 20; i++) reject = await shieldButton(dapp, "reject");
+		await sleep(300);
+		await shot(dapp, "modal-unlimited-approval-en");
+		await shotPart(dapp, "panel", "panel-unlimited-approval-en");
+		await reject();
+		await dapp.close();
+	}
+	await setLang("id");
+	const again = await visit("indodaz.com");
+	check("Indonesian overlay by default", (await shieldText(again)).includes("Situs ini kemungkinan phishing"));
+	await again.close();
+}
+
 // Acceptance 3 + 4 + 5: every flagged case opens the modal fast; Tolak -> 4001 and the wallet never sees it.
 const page = await visit("dapp.test", "/?mock");
 const cases = await page.$$eval("#buttons button", (bs) => bs.map((b) => b.textContent));
@@ -114,7 +184,7 @@ for (const name of cases) {
 		check(`${name}: modal shown`, false);
 		continue;
 	}
-	if (name.startsWith("approve MAX")) await shot(page, "modal-unlimited-approval");
+	if (name.startsWith("approve MAX")) (await shot(page, "modal-unlimited-approval"), await shotPart(page, "panel", "panel-unlimited-approval"));
 	if (name.startsWith("Seaport")) await shot(page, "modal-seaport-zero");
 	await reject();
 	await sleep(200);
