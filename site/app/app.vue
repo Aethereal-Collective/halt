@@ -6,3 +6,9 @@
 	</div>
 	<SiteFooter />
 </template>
+
+<script setup lang="ts">
+// <html lang>, hreflang alternates and og:locale for the active language.
+const head = useLocaleHead();
+useHead(() => ({ htmlAttrs: { lang: head.value.htmlAttrs?.lang }, link: head.value.link, meta: head.value.meta }));
+</script>
