@@ -25,7 +25,7 @@ function wrap(provider) {
 		const finding = safeAnalyze(args);
 		if (finding && !(await ask(finding, args.method))) {
 			// EIP-1193 "user rejected" so dApps handle it like a wallet rejection.
-			throw Object.assign(new Error("Diblokir oleh Aethereal Shield"), { code: 4001 });
+			throw Object.assign(new Error("Diblokir oleh Halt"), { code: 4001 });
 		}
 		return original(args);
 	};
