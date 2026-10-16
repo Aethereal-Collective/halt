@@ -1,4 +1,4 @@
-# Aethereal Shield: MVP Plan
+# Halt: MVP Plan
 
 Target: public beta on the Chrome Web Store in **6 weeks**.
 
@@ -51,7 +51,7 @@ Target: public beta on the Chrome Web Store in **6 weeks**.
 
 ## Launch checklist
 - [ ] CWS developer account with 2FA plus hardware key; single-purpose description; permission justifications (`<all_urls>`: needed to check every site the user visits locally).
-- [ ] Privacy policy at `aethereal.top/shield/privacy` matching SPEC §6 (draft: `docs/privacy-policy.md`; fill contact, review, publish).
+- [ ] Privacy policy published at `https://halt.aethereal.top/privacy` matching SPEC §6 (`docs/privacy-policy.md`, contact aethereal.hq@gmail.com; deploy `site/`).
 - [x] Release zip built from a tagged commit (`npm run release`); changelog (`CHANGELOG.md`).
 - [x] Disclaimer in the UI and listing: "bukan jaminan keamanan".
 - [x] Appeal channel for false positives (link on the block page to `REPORT_URL`).

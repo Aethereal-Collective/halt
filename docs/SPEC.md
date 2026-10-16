@@ -1,4 +1,4 @@
-# Aethereal Shield: Product Spec
+# Halt: Product Spec
 
 Status: Draft v0.1 · Owner: Aethereal · Last updated: 2026-10-14
 
@@ -33,7 +33,7 @@ Existing tools (ScamSniffer, Pocket Universe, wallet built-ins such as OKX Walle
 
 ### Non-goals (v0.x)
 - Not a wallet. We do not hold keys or sign anything.
-- No guarantee or insurance. Shield reduces risk; it does not eliminate it.
+- No guarantee or insurance. Halt reduces risk; it does not eliminate it.
 - No mobile app (desktop browser extension only).
 - No full transaction simulation in MVP (planned v0.3).
 - Solana and other non-EVM chains come after MVP (planned v0.2).
@@ -210,7 +210,7 @@ The extension makes no network requests at all (enforced by `test/privacy.test.j
 
 ## 10. Competitors
 
-| Product | Model | Gap Shield targets |
+| Product | Model | Gap Halt targets |
 |---|---|---|
 | ScamSniffer | Free extension + paid API; large global blocklist (GPL-3.0 open DB) | No Bahasa Indonesia, global focus |
 | Pocket Universe | Extension with transaction simulation | English only; status of active development unclear |

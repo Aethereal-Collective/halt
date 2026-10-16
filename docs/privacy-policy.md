@@ -1,10 +1,10 @@
-# Kebijakan Privasi Aethereal Shield
+# Kebijakan Privasi Halt
 
-<!-- Draft for aethereal.top/shield/privacy. Must match SPEC §6. Fill in [KONTAK] and have it reviewed before CWS submission. -->
+<!-- Served at https://halt.aethereal.top/privacy. Must match SPEC §6. English version: privacy-policy.en.md. -->
 
-Berlaku sejak: [TANGGAL RILIS]
+Berlaku sejak: 16 Oktober 2026
 
-Aethereal Shield adalah ekstensi browser dari Aethereal (aethereal.top) yang memperingatkan kamu tentang situs phishing dan permintaan transaksi wallet yang berbahaya. Kebijakan ini menjelaskan data apa yang diproses dan ke mana data itu pergi.
+Halt adalah ekstensi browser dari Aethereal (aethereal.top) yang memperingatkan kamu tentang situs phishing dan permintaan transaksi wallet yang berbahaya. Kebijakan ini menjelaskan data apa yang diproses dan ke mana data itu pergi.
 
 ## Ringkasnya
 
@@ -38,10 +38,10 @@ Tautan "Laporkan" hanya membuka halaman komunitas kami di tab baru; apa yang kam
 
 ## Batasan
 
-Aethereal Shield **bukan jaminan keamanan**. Situs atau penipuan baru bisa saja belum terdeteksi. Selalu cek ulang alamat situs dan isi transaksi di wallet kamu.
+Halt **bukan jaminan keamanan**. Situs atau penipuan baru bisa saja belum terdeteksi. Selalu cek ulang alamat situs dan isi transaksi di wallet kamu.
 
 ## Kontak
 
-Pertanyaan, atau situs resmi kamu salah ditandai? Hubungi kami di [KONTAK].
+Pertanyaan, atau situs resmi kamu salah ditandai? Hubungi kami di [aethereal.hq@gmail.com](mailto:aethereal.hq@gmail.com).
 
 Perubahan kebijakan ini akan diumumkan di halaman ini beserta tanggal berlakunya.

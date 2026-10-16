@@ -1,4 +1,4 @@
-# Aethereal Shield
+# Halt
 
 Browser extension that protects Indonesian crypto users from phishing sites and wallet drainers, with warnings explained in Bahasa Indonesia. Runs fully on-device: no server, no network calls.
 
@@ -28,7 +28,7 @@ test/                  node --test unit tests for lib/
 test/dapp/             test dApp: one button per flagged request (?mock = fake wallet)
 test/e2e/              real-Chrome E2E for the MVP acceptance criteria
 scripts/               fetch-data + train (model), build-blocklist, release (zip from tag)
-site/                  landing page + privacy policy (Nuxt 4, Tailwind 4, shadcn-vue; static), served at aethereal.top/shield/
+site/                  landing page + privacy policy (Nuxt 4, Tailwind 4, shadcn-vue; static), served at https://halt.aethereal.top
 ```
 
 ## Develop
@@ -53,8 +53,8 @@ Try it: temporarily add `example.com` to `extension/lists/blocklist.json`, reloa
 ```bash
 cd site
 npm install
-npm run dev                   # http://localhost:3000/shield/
-npm run generate              # static files in site/.output/public -> upload to aethereal.top/shield/
+npm run dev                   # http://localhost:3000 (English at /en)
+npm run generate              # static files in site/.output/public -> upload to https://halt.aethereal.top
 ```
 
 The privacy page renders `docs/privacy-policy.md`, so edit the policy there. Sections live in `site/app/components/section/`; the warning mockups in `site/app/components/mock/` mirror `extension/src/content.js`, so update both when the copy changes. TypeScript is pinned to 6: the Vue SFC compiler needs its JS API, which TypeScript 7 no longer ships. Set `cwsUrl` in `site/app/app.config.ts` once the store listing is live.
@@ -69,4 +69,4 @@ npm run release               # dist/aethereal-shield-0.1.0.zip, built from the 
 
 ## Limitations
 
-The transaction guard runs in the page and can be bypassed by a drainer that specifically targets Shield (see [ADR-0003](docs/adr/0003-intercept-eip1193-in-page.md)). Shield reduces risk; it is not a guarantee.
+The transaction guard runs in the page and can be bypassed by a drainer that specifically targets Halt (see [ADR-0003](docs/adr/0003-intercept-eip1193-in-page.md)). Halt reduces risk; it is not a guarantee.
