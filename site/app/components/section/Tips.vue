@@ -1,18 +1,18 @@
 <template>
 	<section class="relative w-full overflow-hidden bg-white py-[7%] text-ink max-lg:py-[10%]">
 		<div class="px-[5vw]">
-			<h2 v-reveal class="max-w-[15em] text-[clamp(36px,3.6vw,56px)] leading-[1.15]">Kebiasaan Kecil yang Bikin Penipu Kesulitan</h2>
-			<p v-reveal="120" class="mt-8 max-w-[26em] text-[17px] leading-[1.7] tracking-[0.02em]">Shield membantu, tapi kebiasaan kamu tetap jadi pertahanan pertama. Mulai dari lima hal ini.</p>
+			<h2 v-reveal class="max-w-[15em] text-[clamp(36px,3.6vw,56px)] leading-[1.15]">{{ c.tips.title }}</h2>
+			<p v-reveal="120" class="mt-8 max-w-[26em] text-[17px] leading-[1.7] tracking-[0.02em]">{{ c.tips.body }}</p>
 		</div>
 
 		<div class="mt-12 grid grid-cols-[minmax(0,22vw)_1fr] gap-8 pl-[5vw] max-lg:grid-cols-1">
 			<div class="flex flex-col justify-between max-lg:flex-row max-lg:items-center max-lg:pr-[5vw]">
-				<a :href="reportUrl" target="_blank" rel="noopener noreferrer" class="inline-flex w-fit items-center gap-2 rounded-full bg-brand px-6 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-[#0f3fb8]">
-					Laporkan Situs <ArrowRight class="size-4" />
+				<a :href="reportUrl" target="_blank" rel="noopener noreferrer" class="inline-flex w-fit items-center gap-2 rounded-full bg-brand px-6 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-steel">
+					{{ c.tips.report }} <ArrowRight class="size-4" />
 				</a>
 				<div class="flex gap-3">
-					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white disabled:opacity-30" :disabled="atStart" aria-label="Sebelumnya" @click="scroll(-1)"><ArrowLeft class="size-5" /></button>
-					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white disabled:opacity-30" :disabled="atEnd" aria-label="Berikutnya" @click="scroll(1)"><ArrowRight class="size-5" /></button>
+					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white disabled:opacity-30" :disabled="atStart" :aria-label="c.tips.prev" @click="scroll(-1)"><ArrowLeft class="size-5" /></button>
+					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white disabled:opacity-30" :disabled="atEnd" :aria-label="c.tips.next" @click="scroll(1)"><ArrowRight class="size-5" /></button>
 				</div>
 			</div>
 
@@ -35,13 +35,15 @@ import { ArrowLeft, ArrowRight, Bookmark, KeyRound, SlidersHorizontal, RotateCcw
 
 const { reportUrl } = useAppConfig();
 
-const tips = [
-	{ icon: Bookmark, bg: "bg-brand", title: "Buka situs dari bookmark", body: "Simpan alamat resmi exchange dan dApp. Jangan buka dari iklan pencarian atau tautan di grup." },
-	{ icon: KeyRound, bg: "bg-[#101010]", title: "Seed phrase hanya untuk kamu", body: "Tidak ada admin, support, atau situs resmi yang akan meminta seed phrase atau private key kamu." },
-	{ icon: SlidersHorizontal, bg: "bg-[#3c5fd6]", title: "Izinkan seperlunya", body: "Saat approve token, isi jumlah yang memang mau kamu pakai, bukan tanpa batas." },
-	{ icon: RotateCcw, bg: "bg-[#0a1f5c]", title: "Cabut izin lama", body: "Izin token yang kamu berikan bulan lalu masih aktif. Tinjau dan cabut yang sudah tidak dipakai." },
-	{ icon: WalletCards, bg: "bg-brand", title: "Pisahkan wallet", body: "Pakai wallet harian untuk mencoba dApp baru, dan simpan aset utama di wallet terpisah." },
+const c = useCopy();
+const META = [
+	{ icon: Bookmark, bg: "bg-brand" },
+	{ icon: KeyRound, bg: "bg-[#101010]" },
+	{ icon: SlidersHorizontal, bg: "chrome-surface" },
+	{ icon: RotateCcw, bg: "bg-steel" },
+	{ icon: WalletCards, bg: "bg-brand" },
 ];
+const tips = computed(() => c.value.tips.items.map((t, i) => ({ ...t, ...META[i]! })));
 
 const rail = ref<HTMLElement>();
 const { arrivedState } = useScroll(rail);

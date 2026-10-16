@@ -6,12 +6,13 @@
 			:href="cwsUrl || undefined"
 			class="inline-flex items-center justify-center rounded-full bg-black px-[6vw] py-[2.6vw] font-sans text-[clamp(22px,2.4vw,36px)] font-medium text-white transition-transform hover:scale-[1.02] max-md:px-10 max-md:py-6"
 		>
-			{{ cwsUrl ? "Pasang Aethereal Shield" : "Aethereal Shield Segera Hadir" }}
+			{{ cwsUrl ? c.cta.live : c.cta.soon }}
 		</component>
-		<p v-reveal="150" class="mt-8 text-[17px]">Pasang Shield, lalu jelajah dunia kripto dengan lebih tenang.</p>
+		<p v-reveal="150" class="mt-8 text-[17px]">{{ c.cta.body }}</p>
 	</section>
 </template>
 
 <script setup lang="ts">
+const c = useCopy();
 const { cwsUrl } = useAppConfig();
 </script>

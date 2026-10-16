@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn tokens, set to the landing palette: white canvas, near-black ink, one strong blue. */
+/* shadcn tokens, set to the Aethereal palette: monochrome ink/paper with zinc greys and chrome gradients. */
 :root {
 	--radius: 0.75rem;
 	--background: #ffffff;
@@ -12,25 +12,27 @@
 	--card-foreground: #050505;
 	--popover: #ffffff;
 	--popover-foreground: #050505;
-	--primary: #134bd6;
+	--primary: #141414;
 	--primary-foreground: #ffffff;
 	--secondary: #f4f4f4;
 	--secondary-foreground: #050505;
 	--muted: #f4f4f4;
 	--muted-foreground: #6b6b6b;
 	--accent: #eef2fd;
-	--accent-foreground: #134bd6;
+	--accent-foreground: #141414;
 	--destructive: #e5484d;
 	--border: #e5e5e5;
 	--input: #e5e5e5;
-	--ring: #134bd6;
+	--ring: #71717a;
 }
 
 @theme inline {
-	--font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
-	--font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-	--color-brand: #134bd6;
-	--color-brand-deep: #0a1f5c;
+	--font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+	--font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+	--color-brand: #141414;
+	--color-steel: #3f3f46;
+	--color-silver: #a1a1aa;
+	--color-mist: #f0f0f0;
 	--color-ink: #050505;
 	--color-paper: #f4f4f4;
 	--color-background: var(--background);
@@ -67,7 +69,7 @@
 	* { @apply border-border outline-ring/50; }
 	html { scroll-behavior: smooth; }
 	body { @apply bg-ink text-foreground font-sans antialiased; }
-	h1, h2, h3 { @apply font-display font-normal; letter-spacing: -0.02em; }
+	h1, h2, h3 { @apply font-display font-bold; letter-spacing: -0.04em; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -78,3 +80,9 @@
 /* v-reveal (app/plugins/reveal.ts). Only hidden when JS runs, see the head script in nuxt.config. */
 .js [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.9s ease, transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .js [data-reveal].is-visible { opacity: 1; transform: none; }
+
+/* Liquid-chrome text, same as aethereal.top. */
+.chrome-text { background: linear-gradient(180deg, #0a0a0a 0%, #3f3f46 45%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.chrome-text-dark { background: linear-gradient(180deg, #ffffff 0%, #a3a3a3 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Brushed steel surface for the cards that were blue in the reference layout. */
+.chrome-surface { background: linear-gradient(160deg, #52525b 0%, #27272a 45%, #0a0a0a 100%); }
