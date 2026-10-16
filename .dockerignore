@@ -1,0 +1,12 @@
+# Build context is the repo root (see site/Dockerfile); only site/ and docs/ are needed.
+.git
+**/node_modules
+**/.nuxt
+**/.output
+**/.data
+data
+dist
+extension
+test
+scripts
+worker

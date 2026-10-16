@@ -59,6 +59,18 @@ npm run generate              # static files in site/.output/public -> upload to
 
 The privacy page renders `docs/privacy-policy.md`, so edit the policy there. Sections live in `site/app/components/section/`; the warning mockups in `site/app/components/mock/` mirror `extension/src/content.js`, so update both when the copy changes. TypeScript is pinned to 6: the Vue SFC compiler needs its JS API, which TypeScript 7 no longer ships. Set `cwsUrl` in `site/app/app.config.ts` once the store listing is live.
 
+## Deploy the landing page
+
+Same setup as aethereal.top: a Docker container on the server, behind your reverse proxy.
+
+```bash
+# on the server, in the repo
+git pull
+./site/deployer.sh            # builds site/Dockerfile from the repo root, runs it on host port 4001
+```
+
+Then point `halt.aethereal.top` at `localhost:4001` in the reverse proxy, the same way `aethereal.top` points at 4000.
+
 ## Release
 
 ```bash
