@@ -44,7 +44,7 @@ export function brandLabel(domain) {
  * @param {string} host
  * @param {{ blocklist: string[], allowlist: string[], brands: {name: string, domains: string[]}[], model?: object }} lists
  *   model: optional output of loadModel() (lib/model.js); adds "ml_suspicious" (ADR-0006).
- * @returns {{ level: string, reasons: {code: string, brand?: string}[] }}
+ * @returns {{ level: string, reasons: {code: string, brand?: string, official?: string}[] }}
  */
 export function checkDomain(host, lists) {
 	const h = normalizeHost(host);
@@ -64,18 +64,19 @@ export function checkDomain(host, lists) {
 		for (const domain of brand.domains) {
 			const target = brandLabel(domain);
 			if (target.length < MIN_BRAND_LABEL) continue;
-			for (const label of labels) check(label, target, brand, false);
-			for (const label of [...ascii, ...skeletons]) check(label, target, brand, true);
+			for (const label of labels) check(label, target, brand, domain, false);
+			for (const label of [...ascii, ...skeletons]) check(label, target, brand, domain, true);
 		}
 	}
-	function check(label, target, brand, spoofed) {
+	// `official` lets the warning point the user to the real site.
+	function check(label, target, brand, official, spoofed) {
 		const dist = editDistance(label, target);
 		const near = dist <= (target.length >= 8 ? 2 : 1) && target.length >= MIN_LOOKALIKE_LABEL && !LOOKALIKE_IGNORE.has(label);
 		// A disguised label that reads exactly as the brand is a lookalike too.
 		if (near && (dist > 0 || spoofed)) {
-			reasons.push({ code: "lookalike", brand: brand.name });
+			reasons.push({ code: "lookalike", brand: brand.name, official });
 		} else if (dist === 0 || label.includes(target)) {
-			reasons.push({ code: "brand_keyword", brand: brand.name });
+			reasons.push({ code: "brand_keyword", brand: brand.name, official });
 		}
 	}
 	if (labels.some((l) => l.startsWith("xn--"))) reasons.push({ code: "punycode" });

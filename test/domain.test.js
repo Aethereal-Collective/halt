@@ -50,11 +50,13 @@ test("brand keyword on a foreign domain warns", () => {
 	const r = checkDomain("indodax-login.xyz", lists);
 	assert.equal(r.level, LEVEL.WARN);
 	assert.equal(r.reasons[0].brand, "Indodax");
+	assert.equal(r.reasons[0].official, "indodax.com");
 });
 
 test("blocklisted domain and its subdomains are dangerous", () => {
-	assert.equal(checkDomain("claim-airdrop-example.xyz", lists).level, LEVEL.DANGER);
-	assert.equal(checkDomain("app.claim-airdrop-example.xyz", lists).level, LEVEL.DANGER);
+	const withEntry = { ...lists, blocklist: ["claim-airdrop-example.xyz"] };
+	assert.equal(checkDomain("claim-airdrop-example.xyz", withEntry).level, LEVEL.DANGER);
+	assert.equal(checkDomain("app.claim-airdrop-example.xyz", withEntry).level, LEVEL.DANGER);
 });
 
 test("unrelated domains are safe", () => {
