@@ -64,7 +64,7 @@ The privacy page renders `docs/privacy-policy.md`, so edit the policy there. Sec
 ```bash
 # npm run blocklist, bump extension/manifest.json version, update CHANGELOG.md, commit
 git tag v0.1.0
-npm run release               # dist/aethereal-shield-0.1.0.zip, built from the tag only
+npm run release               # dist/halt-0.1.0.zip, built from the tag only
 ```
 
 ## Limitations
