@@ -26,10 +26,7 @@
 			</div>
 
 			<div class="absolute inset-x-[5vw] bottom-10 flex items-center justify-between text-[17px] max-lg:static max-lg:mt-16 max-lg:flex-col max-lg:items-start max-lg:gap-4">
-				<p>
-					© {{ year }} Aethereal
-					<template v-for="p in ecosystem" :key="p.href"><span class="mx-1.5" aria-hidden="true">·</span><a :href="p.href" class="hover:underline">{{ p.label }}</a></template>
-				</p>
+				<p>© {{ year }} Aethereal. {{ c.footer.rights }}</p>
 				<a href="#top" class="inline-flex items-center gap-2 hover:underline" @click.prevent="toTop">{{ c.footer.top }} <ArrowUp class="size-4" /></a>
 			</div>
 		</div>
@@ -50,11 +47,5 @@ const contact = computed(() => [
 	{ label: "X", href: social.x },
 	{ label: "GitHub", href: social.github },
 ]);
-// Sister sites: one line of links, so search engines see they belong together.
-const ecosystem = [
-	{ label: "aethereal.top", href: "https://aethereal.top" },
-	{ label: "Research", href: "https://research.aethereal.top" },
-	{ label: "Data", href: "https://dataset.aethereal.top" },
-];
 const toTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 </script>

@@ -25,6 +25,4 @@
 - Home (Bahasa Indonesia): https://halt.aethereal.top/
 - Home (English): https://halt.aethereal.top/en
 - Privacy policy: https://halt.aethereal.top/en/privacy
-- Built by Aethereal: https://aethereal.top
-- Labeled crypto phishing domain dataset from the same threat data: https://dataset.aethereal.top/datasets/phishing-domains-labeled
 - Contact: aethereal.hq@gmail.com
