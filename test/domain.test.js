@@ -7,7 +7,7 @@ const read = (f) => JSON.parse(readFileSync(new URL(`../extension/lists/${f}`, i
 const brands = read("brands.json");
 const lists = {
 	brands,
-	allowlist: [...read("allowlist.json"), ...brands.flatMap((b) => b.domains)],
+	allowlist: new Set([...read("allowlist.json"), ...read("allowlist-defillama.json"), ...brands.flatMap((b) => b.domains)]),
 	blocklist: read("blocklist.json"),
 };
 
@@ -72,4 +72,14 @@ test("bundled third-party blocklist blocks its entries but never an official or 
 	for (const h of thirdParty.slice(0, 50)) assert.equal(checkDomain("login." + h, withThirdParty).level, LEVEL.DANGER, h);
 	for (const h of lists.allowlist) assert.ok(!thirdParty.includes(h), h);
 	for (const h of ["indodax.com", "app.uniswap.org", "curve.finance", "kompas.com"]) assert.equal(checkDomain(h, withThirdParty).level, LEVEL.SAFE, h);
+});
+
+test("official sites of DefiLlama protocols are safe, without whitelisting shared hosts", () => {
+	const defillama = read("allowlist-defillama.json");
+	assert.ok(defillama.length > 1000);
+	for (const h of ["app.uniswap.org", "lido.fi", "app.hyperliquid.xyz", "jup.ag", "pancakeswap.finance", "aave.com"]) assert.equal(checkDomain(h, lists).level, LEVEL.SAFE, h);
+	for (const h of defillama.slice(0, 200)) assert.equal(checkDomain(h, lists).level, LEVEL.SAFE, h);
+	// A phishing page on a shared host must still be checked.
+	for (const shared of ["vercel.app", "github.io", "netlify.app", "pages.dev", "t.me"]) assert.ok(!defillama.includes(shared), shared);
+	assert.notEqual(checkDomain("uniswap-claim.vercel.app", lists).level, LEVEL.SAFE);
 });

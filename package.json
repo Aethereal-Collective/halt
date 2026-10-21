@@ -7,6 +7,7 @@
 		"e2e": "node test/e2e/run.mjs",
 		"release": "node scripts/release.mjs",
 		"train": "node scripts/fetch-data.mjs && node --max-old-space-size=6000 scripts/train.mjs",
+		"allowlist": "node scripts/build-allowlist.mjs",
 		"blocklist": "node scripts/fetch-data.mjs && node scripts/build-blocklist.mjs",
 		"store-assets": "node test/e2e/run.mjs dist/store/raw && node scripts/store-assets.mjs"
 	},

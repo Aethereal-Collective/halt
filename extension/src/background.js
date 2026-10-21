@@ -5,12 +5,13 @@ import { REPORT_URL } from "./config.js";
 // ponytail: lists ship inside the extension. Add a signed remote list on chrome.alarms once the local list outgrows releases.
 let listsPromise;
 function loadLists() {
-	const names = ["brands", "allowlist", "blocklist", "blocklist-thirdparty", "model"];
+	const names = ["brands", "allowlist", "allowlist-defillama", "blocklist", "blocklist-thirdparty", "model"];
 	listsPromise ??= Promise.all(names.map((n) => fetch(chrome.runtime.getURL(`lists/${n}.json`)).then((r) => r.json()))).then(
-		([brands, allowlist, blocklist, thirdParty, model]) => ({
+		([brands, allowlist, defillama, blocklist, thirdParty, model]) => ({
 			brands,
 			blocklist: new Set([...blocklist, ...thirdParty]),
-			allowlist: [...allowlist, ...brands.flatMap((b) => b.domains)],
+			// Official sites of live DefiLlama protocols (scripts/build-allowlist.mjs) are never flagged.
+			allowlist: new Set([...allowlist, ...defillama, ...brands.flatMap((b) => b.domains)]),
 			model: loadModel(model),
 		}),
 	);

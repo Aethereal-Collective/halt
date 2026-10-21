@@ -9,7 +9,7 @@ const SOURCES = {
 };
 const list = (f) => JSON.parse(readFileSync(new URL(`../extension/lists/${f}`, import.meta.url)));
 // Our allowlist and official brand domains always win; never ship them as blocked.
-const safe = new Set([...list("allowlist.json"), ...list("brands.json").flatMap((b) => b.domains)]);
+const safe = new Set([...list("allowlist.json"), ...list("allowlist-defillama.json"), ...list("brands.json").flatMap((b) => b.domains)]);
 // Popular domains in these lists are mostly shared hosts / dynamic DNS (alwaysdata.net, mooo.com). A suffix match
 // would block every site under them, so the top 100k Majestic domains are never shipped as blocked.
 const POPULAR = 100_000;
