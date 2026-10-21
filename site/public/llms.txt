@@ -1,0 +1,30 @@
+# Halt
+
+> Halt is a free browser extension for Chrome and Brave that blocks crypto phishing sites and holds back dangerous wallet requests, such as unlimited token approvals and Permit signatures, before you sign. Warnings are written in plain Bahasa Indonesia and English. Built by Aethereal for crypto users in Indonesia.
+
+## What it does
+
+- Domain Shield: blocks fake exchange and dApp sites, including lookalikes of Indonesian exchanges such as Indodax, using over 160,000 known crypto phishing domains and lookalike detection.
+- Transaction Guard: intercepts risky wallet requests (unlimited approvals, Permit and Permit2 signatures, setApprovalForAll, zero-price NFT listings) and explains the risk before your wallet opens.
+- Privacy: every check runs on your device. Halt never reads seed phrases, private keys, balances, or wallet addresses, and sends nothing off the device.
+- Official sites of live DeFi protocols are allowlisted so they are not flagged by mistake.
+
+## Supported
+
+- Browsers: Chrome and Brave on desktop. Not yet on mobile or Firefox.
+- Wallets: MetaMask, Rabby, OKX Wallet, and other EVM wallets. Solana support is planned.
+
+## FAQ
+
+- Can Halt see my seed phrase or balance? No. Nothing leaves your device.
+- Am I guaranteed to be safe? No tool can guarantee that. Halt reduces the risk from fake sites and the wallet requests scammers use most.
+- My official site was blocked. Use "Report a mistake" on the warning page; confirmed official sites are added to the safe list.
+
+## Links
+
+- Home (Bahasa Indonesia): https://halt.aethereal.top/
+- Home (English): https://halt.aethereal.top/en
+- Privacy policy: https://halt.aethereal.top/en/privacy
+- Built by Aethereal: https://aethereal.top
+- Labeled crypto phishing domain dataset from the same threat data: https://dataset.aethereal.top/datasets/phishing-domains-labeled
+- Contact: aethereal.hq@gmail.com

@@ -67,6 +67,7 @@ const cols = computed(() => {
 				{ label: "GitHub", href: social.github, external: true },
 				{ label: c.value.footer.report, href: reportUrl, external: true },
 				{ label: "aethereal.top", href: "https://aethereal.top", external: true },
+				{ label: "Aethereal Data", href: "https://dataset.aethereal.top", external: true },
 			],
 		},
 	];

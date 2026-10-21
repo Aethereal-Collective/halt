@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://halt.aethereal.top/</loc>
+    <xhtml:link rel="alternate" hreflang="id-ID" href="https://halt.aethereal.top/"/>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://halt.aethereal.top/en"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://halt.aethereal.top/"/>
+  </url>
+  <url>
+    <loc>https://halt.aethereal.top/en</loc>
+    <xhtml:link rel="alternate" hreflang="id-ID" href="https://halt.aethereal.top/"/>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://halt.aethereal.top/en"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://halt.aethereal.top/"/>
+  </url>
+  <url>
+    <loc>https://halt.aethereal.top/privacy</loc>
+    <xhtml:link rel="alternate" hreflang="id-ID" href="https://halt.aethereal.top/privacy"/>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://halt.aethereal.top/en/privacy"/>
+  </url>
+  <url>
+    <loc>https://halt.aethereal.top/en/privacy</loc>
+    <xhtml:link rel="alternate" hreflang="id-ID" href="https://halt.aethereal.top/privacy"/>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://halt.aethereal.top/en/privacy"/>
+  </url>
+</urlset>

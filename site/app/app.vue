@@ -11,4 +11,13 @@
 // <html lang>, hreflang alternates and og:locale for the active language.
 const head = useLocaleHead();
 useHead(() => ({ htmlAttrs: { lang: head.value.htmlAttrs?.lang }, link: head.value.link, meta: head.value.meta }));
+useSeoMeta({
+	ogImage: "https://halt.aethereal.top/og.png",
+	ogImageWidth: 1200,
+	ogImageHeight: 630,
+	ogSiteName: "Halt",
+	ogType: "website",
+	twitterCard: "summary_large_image",
+	twitterSite: "@aethereal_co",
+});
 </script>
