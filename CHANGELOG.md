@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1 (unreleased)
+
+- Official sites of live DeFi protocols (3,667 domains from DefiLlama) are allowlisted, so legitimate protocols are no longer flagged as phishing. Dead, deprecated, and rugged projects are excluded, as are domains also on a phishing list.
+- Phishing lists refreshed: 162,855 domains.
+
+## 0.1.0
 
 First public beta.
 
