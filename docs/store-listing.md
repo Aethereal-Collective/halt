@@ -45,7 +45,7 @@ Phishing lists from MetaMask eth-phishing-detect and Polkadot.js phishing (Apach
 | Permission | Justification |
 |---|---|
 | Content script on `<all_urls>` | The content script must run on every site the user opens to check the site's domain locally against the bundled phishing list and model, and to watch for risky wallet requests on any dApp. Nothing is sent off the device. |
-| `storage` | Keeps the per-tab check result in session storage so the toolbar popup can show it. Cleared when the browser closes. |
+| `storage` | Keeps the per-tab check result in session storage so the toolbar popup can show it (cleared when the browser closes), and remembers the user's language choice (Bahasa Indonesia or English) in local storage. Nothing is sent off the device. |
 | Remote code | None. All code ships in the package, and the extension makes no network requests. |
 
 ## Data usage disclosures (CWS privacy tab)
