@@ -1,6 +1,6 @@
 export default defineAppConfig({
-	// Empty until the Chrome Web Store listing is live; the button then says "segera hadir".
-	cwsUrl: "",
+	// Chrome Web Store listing. Empty means "coming soon" on every install button.
+	cwsUrl: "https://chromewebstore.google.com/detail/halt-by-aethereal/ogdfaofbdlkopmocbbbjaljebmkgiojg",
 	// Keep in sync with extension/src/config.js REPORT_URL.
 	reportUrl: "https://discord.gg/aethereal",
 	email: "aethereal.hq@gmail.com",
