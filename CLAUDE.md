@@ -14,7 +14,7 @@ Product of Aethereal (aethereal.top), a Jakarta tech company working on AI, data
 - Logic lives in pure functions in `extension/src/lib/` and must have tests in `test/` (`npm test`, built-in `node --test`).
 - `content.js` is a classic script (no imports); its UI copy lives there as `COPY.id` / `COPY.en` (popup copy in `popup/popup.js`). Indonesian uses second person "kamu". Keep both languages and the landing mocks (`site/app/utils/copy.ts`) in sync.
 - User-facing text: Bahasa Indonesia (default) and English; users switch in the popup (`chrome.storage.local` `lang`). Code, comments, and docs: English.
-- The extension makes no network requests (ADR-0005, ADR-0008); `test/privacy.test.js` enforces it.
+- The extension makes no network requests (ADR-0005, ADR-0008) except the user-triggered GitHub repo scan in `content.js` (ADR-0009); `test/privacy.test.js` enforces both.
 - Blocklist sources: our own curation plus MetaMask + Polkadot.js (ADR-0007); check the license before ingesting any third-party list (ScamSniffer DB is GPL-3.0; see `docs/sources.md`) (ADR-0002).
 
 ## Known limitation

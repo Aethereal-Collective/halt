@@ -4,6 +4,7 @@
 
 - Official sites of live DeFi protocols (3,667 domains from DefiLlama) are allowlisted, so legitimate protocols are no longer flagged as phishing. Dead, deprecated, and rugged projects are excluded, as are domains also on a phishing list.
 - Phishing lists refreshed: 162,855 domains.
+- GitHub repo scan (ADR-0009): the popup on a `github.com/<owner>/<repo>` page has "Scan this repo", which statically checks the repo (private ones you can open too) for freelancer-trap malware patterns: install hooks, decode-and-eval loaders, remote script execution, credential/wallet access, exfiltration webhooks, and VS Code auto-run tasks. On-demand only, scanned on-device, advisory.
 
 ## 0.1.0
 

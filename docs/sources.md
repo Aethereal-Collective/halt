@@ -34,3 +34,11 @@ Shipped: model weights (`extension/lists/model.json`) and the MetaMask + Polkado
 - Satgas PASTI (OJK) illegal-investment announcements: public press releases, no bulk file. Curate Indonesian entries by hand into `blocklist.json`.
 
 No public Indonesia-specific crypto phishing feed exists; that gap is ours to fill.
+
+## Repo scan references (reference only, not ingested)
+
+Consulted 2026-11-08 for the GitHub repo scanner (ADR-0009). Licenses **not checked**; nothing is bundled, copied or cloned. Details and the rules for using such datasets are in ADR-0010.
+
+- [The-Malware-Museum](https://github.com/Emmaccen/The-Malware-Museum): fake take-home assessment malware samples (README read only).
+- [lazarus-contagious-interview](https://github.com/francesco-oghabi/lazarus-contagious-interview) and [PolinRider](https://github.com/OpenSourceMalware/PolinRider): trojanized repo and technique dossier.
+- [DataDog malicious-software-packages-dataset](https://github.com/datadog/malicious-software-packages-dataset): about 1,400 malicious npm/PyPI packages; candidate for a bundled package-name list once the license and format are checked.

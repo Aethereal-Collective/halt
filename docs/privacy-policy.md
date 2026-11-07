@@ -26,7 +26,7 @@ Hasil pemeriksaan per tab disimpan sementara di browser kamu (`chrome.storage.se
 
 ## Ke mana data dikirim
 
-Tidak ke mana pun. Ekstensi tidak punya server dan tidak membuat permintaan jaringan. Daftar situs phishing dan model pendeteksi ikut terpasang di dalam ekstensi dan diperbarui lewat pembaruan ekstensi di Chrome Web Store.
+Tidak ke mana pun. Ekstensi tidak punya server dan tidak mengirim apa pun ke kami maupun pihak lain. Satu-satunya pengecualian atas "tanpa permintaan jaringan" adalah fitur opsional pindai repo GitHub: hanya saat kamu menekan "Scan repo ini" di halaman GitHub, ekstensi membaca file repo itu dari github.com memakai sesi login kamu sendiri (jadi repo private yang bisa kamu buka juga bisa dipindai), lalu memindainya di perangkat kamu. Isi file tidak pernah dikirim ke kami atau pihak ketiga. Daftar situs phishing dan model pendeteksi ikut terpasang di dalam ekstensi dan diperbarui lewat pembaruan ekstensi di Chrome Web Store.
 
 Tautan "Laporkan" hanya membuka halaman komunitas kami di tab baru; apa yang kamu tulis di sana tunduk pada kebijakan platform tersebut.
 

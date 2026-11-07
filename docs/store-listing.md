@@ -46,7 +46,8 @@ Phishing lists from MetaMask eth-phishing-detect and Polkadot.js phishing (Apach
 |---|---|
 | Content script on `<all_urls>` | The content script must run on every site the user opens to check the site's domain locally against the bundled phishing list and model, and to watch for risky wallet requests on any dApp. Nothing is sent off the device. |
 | `storage` | Keeps the per-tab check result in session storage so the toolbar popup can show it (cleared when the browser closes), and remembers the user's language choice (Bahasa Indonesia or English) in local storage. Nothing is sent off the device. |
-| Remote code | None. All code ships in the package, and the extension makes no network requests. |
+| Content script reading github.com | Only when the user clicks "Scan this repo" in the popup on a GitHub repo page, the content script reads that repo's files from github.com with the user's own session and the service worker scans them locally for malware patterns (ADR-0009). No host permission is requested and file contents are never sent anywhere. |
+| Remote code | None. All code ships in the package. The only network access is the user-triggered GitHub read above. |
 
 ## Data usage disclosures (CWS privacy tab)
 - Collects: nothing. No user data leaves the device.

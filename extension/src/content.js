@@ -107,8 +107,9 @@ const COPY = {
 };
 
 let T = COPY.id;
+let LANG = "id";
 const langReady = chrome.storage.local.get("lang").then(
-	({ lang }) => (T = COPY[lang] ?? COPY.id),
+	({ lang }) => ((LANG = COPY[lang] ? lang : "id"), (T = COPY[LANG])),
 	() => T,
 );
 
@@ -275,4 +276,310 @@ function onReady(fn) {
 
 function esc(s) {
 	return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// ---------- GitHub repo scan (ADR-0009) ----------
+// Runs only when the popup asks (user clicked "Scan"). Reads files from github.com with the user's own session, so
+// private repos they can open work too. The only hosts contacted are github.com and the raw.githubusercontent.com
+// redirect GitHub itself issues. File contents go to the service worker for scanning and nowhere else.
+const GH = "https://github.com";
+const SCAN_LIMITS = { files: 200, fileBytes: 200_000, totalBytes: 3_000_000, concurrency: 6 };
+const NOT_A_REPO = new Set(["settings", "orgs", "organizations", "marketplace", "features", "topics", "explore", "notifications", "login", "sponsors", "pulls", "issues", "new", "search", "about", "pricing", "enterprise", "collections", "trending", "apps", "users", "codespaces", "dashboard", "account", "security", "readme", "customer-stories", "resources", "solutions", "site"]);
+const SCAN_TEXT = /\.(m?js|cjs|jsx|tsx?|py|sh|bash|ps1|bat|cmd|rb|php|go|java|json|ya?ml|toml|cfg|ini|html?)$|(^|\/)(Makefile|Dockerfile|\.npmrc)$/i;
+const SCAN_SKIP = /(^|\/)(node_modules|\.git)\/|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/;
+const SCAN_FIRST = [/(^|\/)package\.json$/, /(^|\/)\.vscode\/tasks\.json$/, /(^|\/)(setup\.py|Makefile|Dockerfile|\.npmrc)$/, /(^|\/)(config|server|app|index|main|utils?|helpers?|lib)[^/]*\.(m?js|cjs|ts|py)$/i];
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+	if (msg?.type === "repoInfo") {
+		const r = currentRepo();
+		reply(r && { name: `${r.owner}/${r.repo}` });
+		return false;
+	}
+	if (msg?.type === "repoScan") {
+		const r = currentRepo();
+		if (!r) return reply({ ok: false, error: "not_repo" }), false;
+		runScan(r).then(reply);
+		return true; // async reply
+	}
+	return false;
+});
+
+function currentRepo() {
+	if (location.hostname !== "github.com") return null;
+	const [owner, repo, kind, ref] = location.pathname.split("/").filter(Boolean);
+	const safe = /^[\w.-]+$/;
+	if (!owner || !repo || NOT_A_REPO.has(owner.toLowerCase()) || !safe.test(owner) || !safe.test(repo)) return null;
+	return { owner, repo, ref: (kind === "tree" || kind === "blob") && ref && safe.test(ref) ? ref : "HEAD" };
+}
+
+const scanError = (code) => Object.assign(new Error(code), { code });
+
+async function ghFetch(path, headers) {
+	const r = await fetch(GH + path, { credentials: "same-origin", headers });
+	const h = new URL(r.url).hostname;
+	if (h !== "github.com" && h !== "raw.githubusercontent.com") throw scanError("network");
+	return r;
+}
+
+async function listRepoFiles({ owner, repo, ref }) {
+	const r = await ghFetch(`/${owner}/${repo}/tree-list/${encodeURIComponent(ref)}`, { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" });
+	if (r.status === 404) throw scanError("no_access");
+	if (r.status === 429) throw scanError("rate_limited");
+	if (!r.ok) throw scanError("unsupported");
+	const j = await r.json().catch(() => null);
+	const list = j?.paths ?? j?.items ?? j?.tree;
+	if (!Array.isArray(list)) throw scanError("unsupported");
+	return list.map((x) => (typeof x === "string" ? x : x?.path)).filter((p) => typeof p === "string");
+}
+
+// onProgress({ pct, phase, done, total }): 0-5% listing, 5-92% reading files, 92-100% analysis.
+async function scanCurrentRepo(repo, onProgress = () => {}) {
+	onProgress({ pct: 0, phase: "list", done: 0, total: 0 });
+	const all = await listRepoFiles(repo);
+	const wanted = all.filter((p) => SCAN_TEXT.test(p) && !SCAN_SKIP.test(p));
+	const prio = (p) => {
+		const i = SCAN_FIRST.findIndex((re) => re.test(p));
+		return i < 0 ? SCAN_FIRST.length : i;
+	};
+	const queue = wanted.sort((a, b) => prio(a) - prio(b)).slice(0, SCAN_LIMITS.files);
+	const total = queue.length;
+	let done = 0;
+	const tick = () => onProgress({ pct: 5 + Math.round((87 * done) / Math.max(total, 1)), phase: "files", done, total });
+	tick();
+
+	const files = [];
+	let bytes = 0;
+	let limited = false;
+	const worker = async () => {
+		for (let p; (p = queue.shift()) !== undefined && !limited && bytes < SCAN_LIMITS.totalBytes; ) {
+			try {
+				const r = await ghFetch(`/${repo.owner}/${repo.repo}/raw/${encodeURIComponent(repo.ref)}/${p.split("/").map(encodeURIComponent).join("/")}`);
+				if (r.status === 429) limited = true;
+				if (!r.ok || Number(r.headers.get("content-length")) > SCAN_LIMITS.fileBytes) continue;
+				const content = await r.text();
+				if (content.length > SCAN_LIMITS.fileBytes) continue;
+				bytes += content.length;
+				files.push({ path: p, content });
+			} catch {
+				// Skip unreadable files; the scan reports how many it could read.
+			}
+			done++;
+			tick();
+		}
+	};
+	await Promise.all(Array.from({ length: SCAN_LIMITS.concurrency }, worker));
+
+	if (!files.length) throw scanError(limited ? "rate_limited" : all.length ? "unsupported" : "empty");
+	onProgress({ pct: 92, phase: "analyze", done: total, total });
+	const result = await chrome.runtime.sendMessage({ type: "scanRepoFiles", files });
+	if (!result) throw scanError("network");
+	return { ok: true, name: `${repo.owner}/${repo.repo}`, ...result, fetched: files.length, total: all.length, partial: limited || files.length < wanted.length };
+}
+
+// ---------- On-page scan card ----------
+// A small card (bottom-right) on repo pages: offers the scan, shows live progress, then the findings.
+// Copy comes from src/scan-copy.js. Scanning starts only from a click (card button or popup button), never by itself.
+const CARD_CSS = `
+	.card { position: fixed; right: 20px; bottom: 20px; z-index: 2147483647; width: min(360px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; background: #0f0f0f; border: 1px solid #262626; border-radius: 18px; padding: 18px; font: 400 14px/1.5 HaltSans, ui-sans-serif, system-ui, sans-serif; color: #f0f0f0; -webkit-font-smoothing: antialiased; box-shadow: 0 24px 80px -16px rgba(0, 0, 0, .7); }
+	.card header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid #1c1c1c; }
+	.card .repo { margin-top: 14px; font-size: 12px; color: #737373; word-break: break-all; }
+	.card .heading { margin-top: 6px; font-size: 18px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.3; }
+	.card .body { margin-top: 8px; font-size: 13px; color: #a3a3a3; }
+	.card .primary { width: 100%; margin-top: 16px; padding: 13px; font-size: 14px; }
+	.card .text-btn { display: block; margin: 8px auto 0; }
+	.bar { margin-top: 16px; height: 6px; border-radius: 999px; background: #262626; overflow: hidden; }
+	.bar span { display: block; height: 100%; width: 0; background: #f0f0f0; border-radius: 999px; transition: width .2s; }
+	@media (prefers-reduced-motion: reduce) { .bar span { transition: none; } }
+	.pct { margin-top: 10px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #d4d4d4; }
+	.pct b { font-weight: 700; }
+	.list { list-style: none; padding: 0; margin-top: 10px; max-height: 240px; overflow-y: auto; }
+	.list li { padding: 9px 0; border-bottom: 1px solid #1c1c1c; font-size: 12px; color: #d4d4d4; }
+	.list .sev { display: inline-block; margin-right: 6px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #eab308; }
+	.list .sev.high { color: #ef4444; }
+	.list .where, .list code { display: block; margin-top: 3px; color: #737373; word-break: break-all; }
+	.list code { color: #a3a3a3; font-size: 11px; white-space: pre-wrap; }
+`;
+const LEVEL_COLOR = { danger: RISK_COLOR.critical, warn: RISK_COLOR.medium, none: "#22c55e" };
+const SCAN_SHOWN = 12;
+
+let card = null; // { el, box, key, repo }
+let activeScan = null; // { key, promise }
+
+const SC = () => globalThis.HALT_SCAN_COPY[LANG];
+const repoKey = (r) => `${r.owner}/${r.repo}`;
+
+function h(tag, props = {}, ...kids) {
+	const el = Object.assign(document.createElement(tag), props);
+	el.append(...kids.filter((k) => k != null && k !== false));
+	return el;
+}
+
+function ensureCard(repo) {
+	const key = repoKey(repo);
+	if (card?.key === key && card.el.isConnected) return card;
+	card?.el.remove();
+	loadFont();
+	const el = document.createElement("aethereal-shield-scan");
+	const root = el.attachShadow({ mode: "closed" });
+	root.innerHTML = `<style>${STYLE}${CARD_CSS}</style><section class="card" role="region"></section>`;
+	document.documentElement.appendChild(el);
+	card = { el, key, repo, box: root.querySelector(".card") };
+	return card;
+}
+
+function cardHeader(color, label) {
+	const head = h("header");
+	head.innerHTML = brand() + pill(color, label);
+	return head;
+}
+
+function dismissCard(c) {
+	try {
+		sessionStorage.setItem(`halt-scan-dismissed:${c.key}`, "1");
+	} catch {
+		// Storage can be blocked; the card will simply reappear on reload.
+	}
+	c.el.remove();
+	if (card === c) card = null;
+}
+
+function renderPrompt(c) {
+	const S = SC();
+	c.box.replaceChildren(
+		cardHeader("#a3a3a3", S.label),
+		h("p", { className: "repo mono", textContent: c.key }),
+		h("p", { className: "heading", textContent: S.promptTitle }),
+		h("p", { className: "body", textContent: S.promptBody }),
+		h("button", { className: "primary", type: "button", textContent: S.button, onclick: () => runScan(c.repo) }),
+		h("button", { className: "text-btn", type: "button", textContent: S.later, onclick: () => dismissCard(c) }),
+	);
+}
+
+function renderProgress(c) {
+	const S = SC();
+	c.pctText = h("b", { textContent: "0%" });
+	c.phaseText = h("span", { textContent: S.phaseList });
+	c.barFill = h("span");
+	const bar = h("div", { className: "bar", role: "progressbar" }, c.barFill);
+	bar.setAttribute("aria-label", S.scanning);
+	bar.setAttribute("aria-valuemin", "0");
+	bar.setAttribute("aria-valuemax", "100");
+	bar.setAttribute("aria-valuenow", "0");
+	c.bar = bar;
+	c.box.replaceChildren(
+		cardHeader("#a3a3a3", S.label),
+		h("p", { className: "repo mono", textContent: c.key }),
+		h("p", { className: "heading", textContent: S.scanning }),
+		bar,
+		h("p", { className: "pct" }, c.phaseText, c.pctText),
+		h("p", { className: "body", textContent: S.slow }),
+	);
+}
+
+function updateProgress(c, p) {
+	if (!c.bar) return;
+	const S = SC();
+	c.barFill.style.width = `${p.pct}%`;
+	c.bar.setAttribute("aria-valuenow", String(p.pct));
+	c.pctText.textContent = `${p.pct}%`;
+	c.phaseText.textContent = p.phase === "files" ? S.phaseFiles(p.done, p.total) : p.phase === "analyze" ? S.phaseAnalyze : S.phaseList;
+}
+
+function renderResult(c, res) {
+	const S = SC();
+	const items = res.findings.slice(0, SCAN_SHOWN).map((f) =>
+		h(
+			"li",
+			{},
+			h("span", { className: `sev ${f.severity}`, textContent: S.sev[f.severity] }),
+			S.rules[f.rule] ?? f.rule,
+			h("span", { className: "where mono", textContent: `${f.path}:${f.line}` }),
+			h("code", { className: "mono", textContent: f.snippet }),
+		),
+	);
+	if (res.findings.length > SCAN_SHOWN) items.push(h("li", { textContent: S.more(res.findings.length - SCAN_SHOWN) }));
+	const note = [S.stats(res.fetched, res.total), res.partial && S.partial, S.note].filter(Boolean).join(" ");
+	c.bar = null;
+	c.box.replaceChildren(
+		cardHeader(LEVEL_COLOR[res.level], S.levels[res.level]),
+		h("p", { className: "repo mono", textContent: c.key }),
+		items.length ? h("ul", { className: "list" }, ...items) : null,
+		h("p", { className: "body", textContent: note }),
+		h("button", { className: "primary", type: "button", textContent: S.close, onclick: () => dismissCard(c) }),
+	);
+}
+
+function renderError(c, code) {
+	const S = SC();
+	c.bar = null;
+	c.box.replaceChildren(
+		cardHeader(RISK_COLOR.high, S.label),
+		h("p", { className: "repo mono", textContent: c.key }),
+		h("p", { className: "heading", textContent: S.errors[code] ?? S.errors.network }),
+		h("button", { className: "primary", type: "button", textContent: S.retry, onclick: () => runScan(c.repo) }),
+		h("button", { className: "text-btn", type: "button", textContent: S.close, onclick: () => dismissCard(c) }),
+	);
+}
+
+// Single entry point for a user-requested scan (card button or popup button). Joins a scan already running for the same repo.
+function runScan(repo) {
+	const key = repoKey(repo);
+	if (activeScan?.key === key) return activeScan.promise;
+	const promise = (async () => {
+		await langReady;
+		const c = ensureCard(repo);
+		renderProgress(c);
+		const report = (p) => {
+			updateProgress(c, p);
+			try {
+				chrome.runtime.sendMessage({ type: "repoProgress", pct: p.pct }).catch(() => {});
+			} catch {
+				// Popup closed or extension reloaded: progress on the page card is enough.
+			}
+		};
+		try {
+			const res = await scanCurrentRepo(repo, report);
+			renderResult(c, res);
+			return res;
+		} catch (e) {
+			const code = e?.code ?? "network";
+			renderError(c, code);
+			return { ok: false, error: code };
+		} finally {
+			activeScan = null;
+		}
+	})();
+	activeScan = { key, promise };
+	return promise;
+}
+
+// GitHub navigates without page loads (Turbo), so re-check on its events plus a light poll.
+function syncScanCard() {
+	const r = currentRepo();
+	const key = r && repoKey(r);
+	if (card?.key === key) {
+		if (!card.el.isConnected) document.documentElement.appendChild(card.el);
+		return;
+	}
+	card?.el.remove();
+	card = null;
+	if (!r) return;
+	let dismissed = false;
+	try {
+		dismissed = sessionStorage.getItem(`halt-scan-dismissed:${key}`) === "1";
+	} catch {
+		// Treat blocked storage as "not dismissed".
+	}
+	if (dismissed) return;
+	langReady.then(() => {
+		const now = currentRepo();
+		if (now && repoKey(now) === key && !card) renderPrompt(ensureCard(now));
+	});
+}
+
+if (location.hostname === "github.com") {
+	onReady(syncScanCard);
+	document.addEventListener("turbo:load", syncScanCard);
+	window.addEventListener("popstate", syncScanCard);
+	setInterval(syncScanCard, 1000);
 }

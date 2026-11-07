@@ -1,5 +1,6 @@
 import { checkDomain, LEVEL } from "./lib/domain.js";
 import { loadModel } from "./lib/model.js";
+import { scanRepo } from "./lib/repo-scan.js";
 import { REPORT_URL } from "./config.js";
 
 // ponytail: lists ship inside the extension. Add a signed remote list on chrome.alarms once the local list outgrows releases.
@@ -41,6 +42,12 @@ const handlers = {
 			await chrome.storage.session.set({ ["tab:" + tabId]: { host, ...verdict } });
 		}
 		return { ...verdict, reportUrl: REPORT_URL };
+	},
+
+	// Pure static scan of file contents the content script read from github.com on user request (ADR-0009).
+	async scanRepoFiles({ files }) {
+		if (!Array.isArray(files) || files.length > 500) return null;
+		return scanRepo(files.filter((f) => typeof f?.path === "string" && typeof f.content === "string"));
 	},
 
 	async getTabVerdict({ tabId }) {
