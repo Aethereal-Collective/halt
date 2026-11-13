@@ -42,7 +42,9 @@ const CONFIG_PATH = /(^|\/)(vite|webpack|rollup|tailwind|postcss|babel|next|nuxt
 // We match explicit full-env serialization on a single line: JSON.stringify(process.env),
 // spreading process.env into a serialized object, qs/querystring stringification, or base64
 // encoding of the whole env — but NOT per-key access like process.env.DATABASE_URL.
-const PROCESS_ENV_SERIAL = /JSON\.stringify\s*\(\s*(process\.env\b|\{[^}]*\.\.\.\s*process\.env\b)|URLSearchParams\s*\(\s*\{[^}]*process\.env\b|(?:qs|querystring)\.stringify\s*\(\s*process\.env\b|(?:btoa|Buffer\.from)\s*\([^)]*JSON\.stringify\s*\([^)]*process\.env\b/;
+// Gaps are bounded ({0,200}) on purpose: this runs on untrusted files, and an unbounded `[^)]*` inside a
+// repeated prefix backtracks cubically (50 crafted lines took ~1.8 s).
+const PROCESS_ENV_SERIAL = /JSON\.stringify\s*\(\s*(process\.env\b|\{[^}]{0,200}\.\.\.\s*process\.env\b)|URLSearchParams\s*\(\s*\{[^}]{0,200}process\.env\b|(?:qs|querystring)\.stringify\s*\(\s*process\.env\b|(?:btoa|Buffer\.from)\s*\([^)]{0,200}JSON\.stringify\s*\([^)]{0,200}process\.env\b/;
 
 // Serializing the env is routine in build and debug code: webpack/vite `define` blocks and log lines.
 // Those lines never count as the "serialize" half of an exfil.
@@ -58,7 +60,7 @@ const ENV_NET_WINDOW = 5;
 //     flagging Buffer.from(x).toString('binary') used for image/binary manipulation
 //   - String.fromCharCode( — char-code array to string
 // We do NOT match a bare `base64` word — too broad.
-const DECODE_EXPR = /\batob\s*\(|Buffer\.from\s*\([^)]*['"`]base64['"`][^)]*\)\s*\.toString\s*\(|String\.fromCharCode\s*\(/i;
+const DECODE_EXPR = /\batob\s*\(|Buffer\.from\s*\([^)]{0,200}['"`]base64['"`][^)]{0,200}\)\s*\.toString\s*\(|String\.fromCharCode\s*\(/i;
 
 // Bare eval/exec/Function call — the "exec" half of a split decode+exec.
 // Same lookbehind as CALL to exclude re.exec(, page.$$eval(, obj.eval(.
@@ -150,20 +152,24 @@ function scanLines(path, content, out, isConfig = false) {
 	const seen = new Set(); // one finding per rule per file keeps the report readable
 
 	for (let i = 0; i < lines.length; i++) {
-		const raw = lines[i];
+		let raw = lines[i];
+		// Whitespace-hidden code: a line with 500+ leading spaces/tabs followed by non-whitespace.
+		// This is the off-screen indentation technique used in Samples 3, 4, and the Lazarus loader to
+		// hide a payload past the visible end of the file. Counted before the length cap below, so padding
+		// that pushes a line past MAX_LINE cannot be used to skip the check.
+		const lead = /^[ \t]*/.exec(raw)[0].length;
+		if (lead >= 500 && lead < raw.length && !/\s/.test(raw[lead]) && !seen.has("whitespace_hidden")) {
+			seen.add("whitespace_hidden");
+			out.push(finding("whitespace_hidden", SEVERITY.HIGH, path, i + 1, `${lead} leading spaces before code`));
+		}
+		// After a long padding the real code may fit in MAX_LINE: scan that part instead of skipping the line.
+		if (raw.length > MAX_LINE && lead >= 500 && raw.length - lead <= MAX_LINE) raw = raw.slice(lead);
 		if (raw.length > MAX_LINE) {
 			if (!seen.has("long_blob") && /[A-Za-z0-9+/=]{800,}/.test(raw.slice(0, 20000))) {
 				seen.add("long_blob");
 				out.push(finding("long_blob", SEVERITY.MEDIUM, path, i + 1, `${raw.length} chars`));
 			}
 			continue;
-		}
-		// Whitespace-hidden code: a line with 500+ leading spaces/tabs followed by non-whitespace.
-		// This is the off-screen indentation technique used in Samples 3, 4, and the Lazarus loader to
-		// hide a payload past the visible end of the file.
-		if (!seen.has("whitespace_hidden") && /^[ \t]{500,}\S/.test(raw)) {
-			seen.add("whitespace_hidden");
-			out.push(finding("whitespace_hidden", SEVERITY.HIGH, path, i + 1, `${raw.search(/\S/)} leading spaces before code`));
 		}
 		if (NET_SINK.test(raw)) {
 			hasNet = true;

