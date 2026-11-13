@@ -42,7 +42,7 @@ All are **reference only**. Nothing from them is bundled, copied or ingested, an
 | Microsoft, ReversingLabs ("graphalgo"), The Hacker News write-ups | Campaign analyses of fake recruiter attacks. | Technique reference. |
 
 #### Deep-dive consultation (2026-11-13)
-Read via GitHub API (`api.github.com/repos/…/contents`) and `raw.githubusercontent.com` as plain text. No cloning, no install, no execution. No sample code was stored in this repo; all test fixtures were written by us.
+Read via GitHub API (`api.github.com/repos/…/contents`) and `raw.githubusercontent.com` as plain text. No install, no execution. The VPS agent reported that it did not clone; we did not verify that independently. No sample code was stored in this repo; all test fixtures were written by us.
 
 **What was read (text only):**
 
@@ -57,7 +57,7 @@ Read via GitHub API (`api.github.com/repos/…/contents`) and `raw.githubusercon
 | francesco-oghabi/lazarus-contagious-interview — `docs/02-stage1-loader.md` | Deobfuscated Stage-1 loader. Key pattern: `JSON.stringify(process.env)` passed via `URLSearchParams` to C2, then `eval(message)` for RCE. Payload hidden by off-screen whitespace indentation. | 2026-11-13 |
 | ReversingLabs graphalgo write-ups (web search snippets) | Campaign summary: fake company publishes GitHub repos with malicious npm deps (`graphnetworkx`, `bigmathutils`). Malicious package imported in `vite.config.js` as a plugin, runs at build time. | 2026-11-13 |
 
-**No payload source code was read; no sample was downloaded to this machine; no cloning occurred.**
+**Only READMEs and documentation (listed above) were read, not sample source files. As reported by the VPS agent, nothing was cloned or executed; this was not independently verified.**
 
 ### 5. Known gaps these sources revealed
 - **Malicious dependencies.** In the "graphalgo" campaign the repo looks clean and the trap is a dependency (`graphnetworkx`, `bigmathutils`). The scanner reads only the repo, so it cannot see this. Fix later with a bundled list of known-bad package names (needs license check, see above).
@@ -72,9 +72,9 @@ All new rules follow the behavior-based policy from §1: a dangerous combination
 | Rule ID | Severity | What it catches | Why it is not a bare keyword |
 |---|---|---|---|
 | `whitespace_hidden` | HIGH | A line with 500+ leading spaces/tabs followed by non-whitespace. | Catches the off-screen indentation technique from Samples 3, 4 and the Lazarus Stage-1 loader. Normal indented code uses at most ~20 spaces. |
-| `process_env_exfil` | HIGH | `JSON.stringify(process.env)`, `{ ...process.env }` spread in a serialized body, `qs.stringify(process.env)`, or `btoa(JSON.stringify(process.env))` in a file that also calls the network. | Requires explicit full-env serialization AND a network sink. Per-key access (`process.env.DATABASE_URL`) does not trigger it. Supabase/Express/Next.js apps with per-key env vars stay clean. |
+| `process_env_exfil` | HIGH | `JSON.stringify(process.env)`, `{ ...process.env }` spread in a serialized body, `qs.stringify(process.env)`, or `btoa(JSON.stringify(process.env))` within 5 lines of a network call. | Requires explicit full-env serialization AND a network call close to it. Per-key access (`process.env.DATABASE_URL`) does not trigger it. Lines with `DefinePlugin`, `define:`, a `'process.env':` key or a `console`/`logger` call are ignored (webpack/vite define blocks, debug logging). Serialization far from any network call is ignored. Supabase/Express/Next.js apps stay clean. |
 | `builtin_as_dep` | MEDIUM | A Node.js built-in module (`child_process`, `fs`, `crypto`, `path`, etc.) listed in `dependencies` (not `devDependencies`). | Node.js built-ins cannot be installed from npm; listing them as `dependencies` is a known attacker technique (Samples 3 & 4). `devDependencies` is excluded. |
-| `config_file_net` | MEDIUM | A network sink inside a build/config file (vite/webpack/rollup/tailwind/postcss/babel/next/nuxt/jest config). | Build configs run at build time with full filesystem access; a network call there is almost never legitimate. Requires both the config path AND a network sink. |
+| `config_file_net` | MEDIUM | A network sink inside a build/config file (vite/webpack/rollup/tailwind/postcss/babel/next/nuxt/jest config). | Build configs run at build time with full filesystem access; a network call there is almost never legitimate. Requires both a real `*.config.*` file name (a module called `src/lib/next.ts` does not count) AND a network sink. A legitimate `next.config.js` that fetches redirects is reported as medium ("check"), never as a block. |
 | `decode_exec_split` | MEDIUM | A decode expression (`atob(`, `Buffer.from(...,'base64').toString(`, `String.fromCharCode(`) on one line and a bare `eval(`/`new Function(` on a **different** line in the same file. | `Buffer.from` without the `'base64'` argument is excluded (avoids flagging binary/image manipulation). `btoa` (encoding direction) is excluded. Only fires when same-line `decode_exec` has not already fired. |
 | `addr_concat_swap` | MEDIUM | `"0x" + variable` passed to a setter inside an `if` containing `&&`. | Legitimate DeFi code uses full address constants; `"0x" +` concatenation behind a flag AND value check is the Sample 3 attack. Single-condition formatters (`if (!prefixed) setAddr("0x" + addr)`) are excluded by requiring `&&`. Nested calls like `.toFixed(5)` inside the condition are handled by a two-regex approach. |
 | `Function.constructor(` | (extends `decode_exec` and `remote_code_load`) | `Function.constructor(…)` as an alias for `new Function`. | Same lookbehind as the existing `CALL` regex; `page.Function.constructor(` is excluded by `(?<![\w$.])`. |

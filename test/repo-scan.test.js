@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { scanRepo, LEVEL } from "../extension/src/lib/repo-scan.js";
 
 const scan = (path, content) => scanRepo([{ path, content }]);
@@ -374,9 +375,9 @@ test("createClient(process.env.URL, process.env.KEY) alongside fetch is NOT flag
 // ── Contract-address swap (addr_concat_swap) ─────────────────────────────────────────────────
 
 test("hidden state flag+value swapping contract address via '0x'+var inside if(&&) is flagged", () => {
-	// Direct replica of the Sample 3 pattern: multi-condition if, "0x" + hidden var
+	// Mimics the Sample 3 pattern with made-up values: multi-condition if, "0x" + hidden var
 	const r = scan("src/pages/Home.js",
-		"const [data] = useState({ flag: false, value: 321651351, id: '48a2cae82fcd84e64fc802d2aeeb180fe1fbca70' });\n" +
+		"const [data] = useState({ flag: false, value: 1000000, id: '00112233445566778899aabbccddeeff00112233' });\n" +
 		"if (balanceInEth.toFixed(5) * 1 > data.value * 1 && data.flag) setRouter('0x' + data.id);");
 	assert.ok(rules(r).includes("addr_concat_swap"), "Sample 3 contract-address swap must be caught");
 });
@@ -409,4 +410,54 @@ test("normal DeFi app with address constants and conditional logic is NOT flagge
 		"  : '0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3';\n" +
 		"setRouter(routerAddr);");
 	assert.deepEqual(rules(r), [], "ternary with full address constants must not be flagged");
+});
+
+// ── Review fixes (round 3): false positives found by probing the gap-coverage branch with ordinary code ──
+
+test("webpack DefinePlugin and log lines that serialize process.env are not exfil", () => {
+	const define = scan("webpack.config.js", "module.exports = { plugins: [new webpack.DefinePlugin({ 'process.env': JSON.stringify(process.env) })] };\nconst r = fetch('https://example.com/health');");
+	assert.ok(!rules(define).includes("process_env_exfil"), "DefinePlugin must not count as exfil");
+	const log = scan("log.js", "console.log(JSON.stringify(process.env));\nfetch('https://example.com');");
+	assert.ok(!rules(log).includes("process_env_exfil"), "a log line must not count as exfil");
+});
+
+test("process.env serialized far from any network call is not exfil", () => {
+	const filler = Array.from({ length: 30 }, (_, i) => `const v${i} = ${i};`).join("\n");
+	const r = scan("server.js", `const snapshot = JSON.stringify(process.env);\n${filler}\nconst res = await fetch('https://example.com');`);
+	assert.ok(!rules(r).includes("process_env_exfil"));
+});
+
+test("process.env serialized right next to a network call is still high, with the real line number", () => {
+	const r = scan("routes/auth.js", "const a = 1;\nconst b = 2;\nconst body = JSON.stringify(process.env);\nawait fetch(url, { method: 'POST', body });");
+	const f = r.findings.find((x) => x.rule === "process_env_exfil");
+	assert.ok(f, "must still be caught");
+	assert.equal(f.line, 3);
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("config_file_net needs a real *.config.* file name, not any file called next or vite", () => {
+	assert.deepEqual(rules(scan("src/lib/next.ts", "export const go = () => fetch('/api/next');")), []);
+	assert.deepEqual(rules(scan("src/utils/vite.js", "export const ping = () => fetch('/ping');")), []);
+	assert.deepEqual(rules(scan("jest.config.js", "module.exports = { testEnvironment: 'node' };")), []);
+	assert.ok(rules(scan("packages/web/vite.config.mjs", "fetch('https://collector.example/beacon');")).includes("config_file_net"));
+	assert.ok(rules(scan("next.config.js", "const r = await fetch('https://example.com/redirects.json');")).includes("config_file_net"), "stays a medium 'check', not a block");
+});
+
+test("review-found borderline cases stay medium, never high", () => {
+	const accidental = scan("package.json", JSON.stringify({ dependencies: { crypto: "^1.0.1", react: "^18.0.0" } }));
+	assert.equal(accidental.level, LEVEL.WARN);
+	const split = scan("a.js", "const t = atob(token.split('.')[1]);\nconst x = eval('1+1');");
+	assert.equal(split.level, LEVEL.WARN);
+});
+
+// Every rule the scanner can emit needs UI copy in both languages, otherwise the popup shows a raw rule id.
+test("every scanner rule has Indonesian and English copy", async () => {
+	await import("../extension/src/scan-copy.js");
+	const src = readFileSync(new URL("../extension/src/lib/repo-scan.js", import.meta.url), "utf8");
+	const ids = new Set([...src.matchAll(/finding\(\s*"(\w+)"/g), ...src.matchAll(/\bid:\s*"(\w+)"/g)].map((m) => m[1]));
+	assert.ok(ids.size >= 15, `expected many rule ids, found ${ids.size}`);
+	for (const lang of ["id", "en"]) {
+		const copy = globalThis.HALT_SCAN_COPY[lang].rules;
+		for (const id of ids) assert.equal(typeof copy[id], "string", `${lang} copy missing for rule "${id}"`);
+	}
 });

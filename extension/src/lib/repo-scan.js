@@ -34,7 +34,8 @@ const NODE_BUILTINS_AS_DEP = new Set(["child_process", "fs", "crypto", "path", "
 
 // Build / config files that run in the developer's environment. Network calls here almost never happen
 // in a legitimate project (eslints-logger / graphalgo pattern — Sample 5, graphalgo campaign).
-const CONFIG_PATH = /(^|\/)(vite|webpack|rollup|tailwind|postcss|babel|next|nuxt|astro|svelte|jest|vitest)(\.config)?\.[cm]?[jt]s$/i;
+// `.config` is required: ordinary modules such as `src/lib/next.ts` or `utils/vite.js` are not build configs.
+const CONFIG_PATH = /(^|\/)(vite|webpack|rollup|tailwind|postcss|babel|next|nuxt|astro|svelte|jest|vitest)\.config\.[cm]?[jt]s$/i;
 
 // `process.env` being *serialized* (not just read per-key) and sent to the network is the
 // BeaverTail / Stage-1 Lazarus pattern (the entire secret store exfiltrated in one call).
@@ -42,6 +43,13 @@ const CONFIG_PATH = /(^|\/)(vite|webpack|rollup|tailwind|postcss|babel|next|nuxt
 // spreading process.env into a serialized object, qs/querystring stringification, or base64
 // encoding of the whole env — but NOT per-key access like process.env.DATABASE_URL.
 const PROCESS_ENV_SERIAL = /JSON\.stringify\s*\(\s*(process\.env\b|\{[^}]*\.\.\.\s*process\.env\b)|URLSearchParams\s*\(\s*\{[^}]*process\.env\b|(?:qs|querystring)\.stringify\s*\(\s*process\.env\b|(?:btoa|Buffer\.from)\s*\([^)]*JSON\.stringify\s*\([^)]*process\.env\b/;
+
+// Serializing the env is routine in build and debug code: webpack/vite `define` blocks and log lines.
+// Those lines never count as the "serialize" half of an exfil.
+const ENV_SERIAL_BENIGN = /DefinePlugin|\bdefine\s*:|['"`]process\.env['"`]\s*:|\b(?:console|logger|log)\.\w+\s*\(/;
+// The serialization must sit within this many lines of a network call. A file that serializes env in one
+// place and calls fetch hundreds of lines away is an ordinary server, not a one-shot exfil.
+const ENV_NET_WINDOW = 5;
 
 // Decode expressions that produce a string — the "decode" half of a split decode+exec.
 // Narrowed to patterns that explicitly convert encoded data to executable string form:
@@ -130,7 +138,8 @@ export function scanRepo(files) {
 function scanLines(path, content, out, isConfig = false) {
 	const lines = content.split(/\r?\n/);
 	let hasNet = false;
-	let hasProcessEnvSerial = false;
+	let envSerialLine = -1; // 0-based index of the first non-benign full-env serialization
+	const netLines = []; // 0-based indexes of lines containing a network call
 	// Multi-line decode+exec tracking: record the first line number where each half appears.
 	// If both halves are present but on different lines, emit decode_exec_split (MEDIUM).
 	// If they're on the same line, decode_exec (HIGH) already fires via LINE_RULES.
@@ -156,8 +165,11 @@ function scanLines(path, content, out, isConfig = false) {
 			seen.add("whitespace_hidden");
 			out.push(finding("whitespace_hidden", SEVERITY.HIGH, path, i + 1, `${raw.search(/\S/)} leading spaces before code`));
 		}
-		if (!hasNet && NET_SINK.test(raw)) hasNet = true;
-		if (!hasProcessEnvSerial && PROCESS_ENV_SERIAL.test(raw)) hasProcessEnvSerial = true;
+		if (NET_SINK.test(raw)) {
+			hasNet = true;
+			netLines.push(i);
+		}
+		if (envSerialLine < 0 && PROCESS_ENV_SERIAL.test(raw) && !ENV_SERIAL_BENIGN.test(raw)) envSerialLine = i;
 		// Track multi-line decode+exec halves (skip comment lines).
 		if (!/^\s*(\/\/|#|\*)/.test(raw)) {
 			if (decodeLineNo < 0 && DECODE_EXPR.test(raw)) decodeLineNo = i;
@@ -186,10 +198,10 @@ function scanLines(path, content, out, isConfig = false) {
 	if (hasNet && !sensitiveHits.length && weakHits.length) out.push(weakHits[0]);
 	// Serializing the entire process.env and sending it to the network is the BeaverTail/Lazarus
 	// Stage-1 pattern (all JWT_SECRET, DB URI, cloud keys sent in a single call). We require an
-	// explicit full-env serialization (not per-key access like process.env.DATABASE_URL) AND a
-	// network sink in the same file to avoid false positives on normal server apps.
-	if (hasNet && hasProcessEnvSerial && !seen.has("process_env_exfil")) {
-		out.push(finding("process_env_exfil", SEVERITY.HIGH, path, 1, "process.env serialized and sent over network (BeaverTail pattern)"));
+	// explicit full-env serialization (not per-key access like process.env.DATABASE_URL) that is not in a
+	// define/log line AND a network call within ENV_NET_WINDOW lines of it.
+	if (envSerialLine >= 0 && netLines.some((n) => Math.abs(n - envSerialLine) <= ENV_NET_WINDOW)) {
+		out.push(finding("process_env_exfil", SEVERITY.HIGH, path, envSerialLine + 1, lines[envSerialLine]));
 	}
 	// Multi-line decode+exec: a decode expression on one line and a bare eval/Function on a different
 	// line in the same file. Weaker than same-line (which fires decode_exec HIGH via LINE_RULES), so
