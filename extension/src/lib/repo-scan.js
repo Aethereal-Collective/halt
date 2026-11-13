@@ -38,9 +38,34 @@ const CONFIG_PATH = /(^|\/)(vite|webpack|rollup|tailwind|postcss|babel|next|nuxt
 
 // `process.env` being *serialized* (not just read per-key) and sent to the network is the
 // BeaverTail / Stage-1 Lazarus pattern (the entire secret store exfiltrated in one call).
-// We only match explicit full-env serialization: JSON.stringify(process.env), URLSearchParams({ …process.env }),
-// or spreading into a body — not per-key access like process.env.DATABASE_URL.
-const PROCESS_ENV_SERIAL = /JSON\.stringify\s*\(\s*process\.env\b|URLSearchParams\s*\(\s*\{[^}]*process\.env\b|processInfo\s*:\s*JSON\.stringify\s*\(\s*process\.env\b/;
+// We match explicit full-env serialization on a single line: JSON.stringify(process.env),
+// spreading process.env into a serialized object, qs/querystring stringification, or base64
+// encoding of the whole env — but NOT per-key access like process.env.DATABASE_URL.
+const PROCESS_ENV_SERIAL = /JSON\.stringify\s*\(\s*(process\.env\b|\{[^}]*\.\.\.\s*process\.env\b)|URLSearchParams\s*\(\s*\{[^}]*process\.env\b|(?:qs|querystring)\.stringify\s*\(\s*process\.env\b|(?:btoa|Buffer\.from)\s*\([^)]*JSON\.stringify\s*\([^)]*process\.env\b/;
+
+// Decode expressions that produce a string — the "decode" half of a split decode+exec.
+// Narrowed to patterns that explicitly convert encoded data to executable string form:
+//   - atob(  — always decodes base64 to string
+//   - Buffer.from(..., 'base64').toString(  — the base64 argument must be present to avoid
+//     flagging Buffer.from(x).toString('binary') used for image/binary manipulation
+//   - String.fromCharCode( — char-code array to string
+// We do NOT match a bare `base64` word — too broad.
+const DECODE_EXPR = /\batob\s*\(|Buffer\.from\s*\([^)]*['"`]base64['"`][^)]*\)\s*\.toString\s*\(|String\.fromCharCode\s*\(/i;
+
+// Bare eval/exec/Function call — the "exec" half of a split decode+exec.
+// Same lookbehind as CALL to exclude re.exec(, page.$$eval(, obj.eval(.
+const EXEC_CALL = new RegExp(String.raw`(?<![\w$.])(?:eval|Function(?:\.constructor)?)\s*\(`);
+
+// Contract-address concatenation inside a conditional with multiple conditions (`&&`): `"0x" + var`
+// as argument to a setter call (Sample 3). Legitimate DeFi code uses full address constants.
+// Splitting "0x" and the hex part via concatenation hidden behind a flag AND value check is the
+// attack pattern. Requiring `&&` avoids flagging simple formatters like
+// `if (!prefixed) setAddr("0x" + addr)` which have a single condition.
+// Two separate regexes are used so nested calls like `.toFixed(5)` inside the if-condition don't
+// break the `[^)]*` match — HAS_IF_AND looks for the && anywhere on the line; HAS_SETTER_0X
+// looks for a function call receiving "0x" + something.
+const HAS_IF_AND = /\bif\s*\(.*&&/;
+const HAS_SETTER_0X = /\w+\s*\(\s*["'`]0x["'`]\s*\+/;
 
 // Raw public IPs are a classic C2/exfil target; private, loopback and link-local ranges (SSRF tests, local dev) are not.
 function hasPublicRawIp(line) {
@@ -73,6 +98,10 @@ const LINE_RULES = [
 	// (checked in scanLines via the `isConfig` flag). A single bare import from a package is not flagged;
 	// we require an actual network sink.
 	{ id: "config_file_net", severity: SEVERITY.MEDIUM, _configOnly: true, test: (l) => NET_SINK.test(l) },
+	// Contract-address swap: `"0x" + var` to a setter inside an `if` with `&&` (Sample 3).
+	// Full address constants are the norm; "0x" + hidden-var behind a multi-condition flag/value
+	// check is the attack signature. Two-regex approach handles nested calls in the if-condition.
+	{ id: "addr_concat_swap", severity: SEVERITY.MEDIUM, test: (l) => HAS_IF_AND.test(l) && HAS_SETTER_0X.test(l) },
 ];
 
 export function scanRepo(files) {
@@ -102,6 +131,11 @@ function scanLines(path, content, out, isConfig = false) {
 	const lines = content.split(/\r?\n/);
 	let hasNet = false;
 	let hasProcessEnvSerial = false;
+	// Multi-line decode+exec tracking: record the first line number where each half appears.
+	// If both halves are present but on different lines, emit decode_exec_split (MEDIUM).
+	// If they're on the same line, decode_exec (HIGH) already fires via LINE_RULES.
+	let decodeLineNo = -1;  // line index (0-based) of first decode expression
+	let execLineNo = -1;    // line index (0-based) of first bare eval/Function call
 	const sensitiveHits = [];
 	const weakHits = [];
 	const seen = new Set(); // one finding per rule per file keeps the report readable
@@ -124,6 +158,11 @@ function scanLines(path, content, out, isConfig = false) {
 		}
 		if (!hasNet && NET_SINK.test(raw)) hasNet = true;
 		if (!hasProcessEnvSerial && PROCESS_ENV_SERIAL.test(raw)) hasProcessEnvSerial = true;
+		// Track multi-line decode+exec halves (skip comment lines).
+		if (!/^\s*(\/\/|#|\*)/.test(raw)) {
+			if (decodeLineNo < 0 && DECODE_EXPR.test(raw)) decodeLineNo = i;
+			if (execLineNo < 0 && EXEC_CALL.test(raw)) execLineNo = i;
+		}
 		for (const rule of LINE_RULES) {
 			if (seen.has(rule.id)) continue;
 			// config_file_net only fires inside build-config files
@@ -151,6 +190,13 @@ function scanLines(path, content, out, isConfig = false) {
 	// network sink in the same file to avoid false positives on normal server apps.
 	if (hasNet && hasProcessEnvSerial && !seen.has("process_env_exfil")) {
 		out.push(finding("process_env_exfil", SEVERITY.HIGH, path, 1, "process.env serialized and sent over network (BeaverTail pattern)"));
+	}
+	// Multi-line decode+exec: a decode expression on one line and a bare eval/Function on a different
+	// line in the same file. Weaker than same-line (which fires decode_exec HIGH via LINE_RULES), so
+	// MEDIUM. Only emitted when decode_exec did NOT already fire (same-line case already covered).
+	if (decodeLineNo >= 0 && execLineNo >= 0 && decodeLineNo !== execLineNo && !seen.has("decode_exec")) {
+		const reportLine = Math.min(decodeLineNo, execLineNo) + 1;
+		out.push(finding("decode_exec_split", SEVERITY.MEDIUM, path, reportLine, "decode expression and eval/Function call on separate lines"));
 	}
 }
 

