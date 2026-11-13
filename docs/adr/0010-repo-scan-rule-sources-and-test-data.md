@@ -28,7 +28,9 @@ When a real repo is wrongly flagged, add the exact line as a regression test in 
 - **License check before ingesting.** Per ADR-0002, a dataset is listed in `docs/sources.md` with its license before we copy anything from it. Reference-only reading is allowed without ingesting.
 - **If ingestion is ever needed** (for example a bundled list of malicious package names for the dependency check), prefer a permissive-licensed list, bundle only names/hashes, and add credit to `extension/CREDITS.md`.
 
-### 4. Sources consulted (2026-11-08)
+### 4. Sources consulted
+
+#### Initial consultation (2026-11-08)
 All are **reference only**. Nothing from them is bundled, copied or ingested, and their licenses were **not** checked yet. What we actually read: the Malware Museum README and its repository file list (names, sizes, hashes), and web search snippets. No sample source file was read, nothing was cloned or downloaded, and the saved file list was deleted.
 
 | Source | What it is | Use for us |
@@ -39,10 +41,43 @@ All are **reference only**. Nothing from them is bundled, copied or ingested, an
 | [DataDog/malicious-software-packages-dataset](https://github.com/datadog/malicious-software-packages-dataset) | About 1,400 human-vetted malicious npm/PyPI packages. | Candidate for a bundled package-name list. Check license and format first. |
 | Microsoft, ReversingLabs ("graphalgo"), The Hacker News write-ups | Campaign analyses of fake recruiter attacks. | Technique reference. |
 
+#### Deep-dive consultation (2026-11-13)
+Read via GitHub API (`api.github.com/repos/…/contents`) and `raw.githubusercontent.com` as plain text. No cloning, no install, no execution. No sample code was stored in this repo; all test fixtures were written by us.
+
+**What was read (text only):**
+
+| Source | What was read | Date |
+|---|---|---|
+| Emmaccen/The-Malware-Museum — Sample 1 README | Full README for the `metrica-node` supply-chain sample. Attack: `child_process.spawn` detached process, `Buffer.from(...,'base64')` decodes C2 URL, `new Function.constructor("require", payload)(require)` for RCE. | 2026-11-13 |
+| Emmaccen/The-Malware-Museum — Sample 2 README | Full README for the `js-nodecat` variable-masquerading sample. Attack: malicious package assigned to a trusted variable name (`dotenv`). | 2026-11-13 |
+| Emmaccen/The-Malware-Museum — Sample 3 README | Full README for the crypto-wallet stealer. Attack: 1,488 spaces of whitespace padding after `module.exports`, custom base64 decoder (strip-first-char salt), wallet/browser credential theft, C2 HTTP POST, `setInterval` persistence. Additional: conditional contract-address swap in React state. | 2026-11-13 |
+| Emmaccen/The-Malware-Museum — Sample 4 README | Full README for the DAO credential stealer. Same family as Sample 3 (same C2), different lure. Added: interleaved base64 URL construction, `child_process`/`fs`/`path` listed as npm dependencies. | 2026-11-13 |
+| Emmaccen/The-Malware-Museum — Sample 5 README | Full README for the `eslints-logger` typosquat sample. Attack: one-character typo in `package.json` dep, malicious Vite plugin imported in `vite.config.js`, executes at build time with full filesystem access. | 2026-11-13 |
+| francesco-oghabi/lazarus-contagious-interview — `docs/01-overview.md` | Campaign overview (Contagious Interview / BeaverTail): two-stage attack, Stage 1 = obfuscated loader in `routes/api/auth.js`, Stage 2 = `eval(message)` from C2. | 2026-11-13 |
+| francesco-oghabi/lazarus-contagious-interview — `docs/02-stage1-loader.md` | Deobfuscated Stage-1 loader. Key pattern: `JSON.stringify(process.env)` passed via `URLSearchParams` to C2, then `eval(message)` for RCE. Payload hidden by off-screen whitespace indentation. | 2026-11-13 |
+| ReversingLabs graphalgo write-ups (web search snippets) | Campaign summary: fake company publishes GitHub repos with malicious npm deps (`graphnetworkx`, `bigmathutils`). Malicious package imported in `vite.config.js` as a plugin, runs at build time. | 2026-11-13 |
+
+**No payload source code was read; no sample was downloaded to this machine; no cloning occurred.**
+
 ### 5. Known gaps these sources revealed
 - **Malicious dependencies.** In the "graphalgo" campaign the repo looks clean and the trap is a dependency (`graphnetworkx`, `bigmathutils`). The scanner reads only the repo, so it cannot see this. Fix later with a bundled list of known-bad package names (needs license check, see above).
-- **Payloads hidden in config files** (for example a JS config file that loads code) and **contract-address swapping** in crypto dApps are not covered by specific rules yet.
+- **Payloads hidden in config files** (for example a JS config file that loads code): **partially addressed** — `config_file_net` rule (MEDIUM) flags network calls inside vite/webpack/rollup/tailwind/postcss/babel/next/nuxt/jest config files. This catches the `eslints-logger`/graphalgo pattern but not a config file that indirectly triggers a payload at import time without an in-file network call.
+- **Contract-address swapping** in crypto dApps: not covered by specific rules. The pattern (a React `useState` with a hidden flag/value pair that swaps the contract address) requires React-aware data-flow analysis. Left as a known gap.
 - **No data-flow tracing.** Rules are per line plus a file-level network check, so a payload split across variables or files can slip through.
+- **Variable masquerading (Sample 2):** the malicious package is assigned to a trusted variable name. The scanner checks `package.json` dependencies for URL-based or git-based specs; a plain npm package name like `js-nodecat` or `eslints-logger` is not checked. Fix later with a bundled list of known-bad package names.
+
+### 6. New rules added (2026-11-13)
+All new rules follow the behavior-based policy from §1: a dangerous combination, not a scary keyword.
+
+| Rule ID | Severity | What it catches | Why it is not a bare keyword |
+|---|---|---|---|
+| `whitespace_hidden` | HIGH | A line with 500+ leading spaces/tabs followed by non-whitespace. | Catches the off-screen indentation technique from Samples 3, 4 and the Lazarus Stage-1 loader. Normal indented code uses at most ~20 spaces. |
+| `process_env_exfil` | HIGH | `JSON.stringify(process.env)`, `{ ...process.env }` spread in a serialized body, `qs.stringify(process.env)`, or `btoa(JSON.stringify(process.env))` in a file that also calls the network. | Requires explicit full-env serialization AND a network sink. Per-key access (`process.env.DATABASE_URL`) does not trigger it. Supabase/Express/Next.js apps with per-key env vars stay clean. |
+| `builtin_as_dep` | MEDIUM | A Node.js built-in module (`child_process`, `fs`, `crypto`, `path`, etc.) listed in `dependencies` (not `devDependencies`). | Node.js built-ins cannot be installed from npm; listing them as `dependencies` is a known attacker technique (Samples 3 & 4). `devDependencies` is excluded. |
+| `config_file_net` | MEDIUM | A network sink inside a build/config file (vite/webpack/rollup/tailwind/postcss/babel/next/nuxt/jest config). | Build configs run at build time with full filesystem access; a network call there is almost never legitimate. Requires both the config path AND a network sink. |
+| `decode_exec_split` | MEDIUM | A decode expression (`atob(`, `Buffer.from(...,'base64').toString(`, `String.fromCharCode(`) on one line and a bare `eval(`/`new Function(` on a **different** line in the same file. | `Buffer.from` without the `'base64'` argument is excluded (avoids flagging binary/image manipulation). `btoa` (encoding direction) is excluded. Only fires when same-line `decode_exec` has not already fired. |
+| `addr_concat_swap` | MEDIUM | `"0x" + variable` passed to a setter inside an `if` containing `&&`. | Legitimate DeFi code uses full address constants; `"0x" +` concatenation behind a flag AND value check is the Sample 3 attack. Single-condition formatters (`if (!prefixed) setAddr("0x" + addr)`) are excluded by requiring `&&`. Nested calls like `.toFixed(5)` inside the condition are handled by a two-regex approach. |
+| `Function.constructor(` | (extends `decode_exec` and `remote_code_load`) | `Function.constructor(…)` as an alias for `new Function`. | Same lookbehind as the existing `CALL` regex; `page.Function.constructor(` is excluded by `(?<![\w$.])`. |
 
 ## Consequences
 - **+** The next person (or agent) knows which datasets were looked at, what was read, and under what rules, without redoing the research.
