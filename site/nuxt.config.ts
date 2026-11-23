@@ -47,5 +47,5 @@ export default defineNuxtConfig({
 		},
 	},
 	// Every route is listed, so link crawling is off (it also raced on the prerender cache on Windows).
-	nitro: { prerender: { routes: ["/", "/guide", "/privacy", "/en", "/en/guide", "/en/privacy"], crawlLinks: false } },
+	nitro: { compressPublicAssets: true, prerender: { routes: ["/", "/guide", "/privacy", "/en", "/en/guide", "/en/privacy"], crawlLinks: false } },
 });

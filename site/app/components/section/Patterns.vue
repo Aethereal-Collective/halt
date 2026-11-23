@@ -28,18 +28,19 @@
 
 			<div class="flex flex-col gap-6 overflow-hidden">
 				<div class="flex justify-end gap-3 pr-6 max-lg:justify-start">
-					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white" :aria-label="c.patterns.prev" @click="go(-1)"><ArrowLeft class="size-5" /></button>
-					<button class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white" :aria-label="c.patterns.next" @click="go(1)"><ArrowRight class="size-5" /></button>
+					<button type="button" class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white" :aria-label="c.patterns.prev" @click="go(-1)"><ArrowLeft class="size-5" aria-hidden="true" /></button>
+					<button type="button" class="grid size-12 place-items-center rounded-full border border-brand text-brand transition-colors hover:bg-brand hover:text-white" :aria-label="c.patterns.next" @click="go(1)"><ArrowRight class="size-5" aria-hidden="true" /></button>
 				</div>
 				<div class="flex gap-5">
 					<button
 						v-for="p in rest"
 						:key="p.title"
+						type="button"
 						class="flex aspect-square w-[188px] shrink-0 flex-col justify-between rounded-2xl p-4 text-left text-white transition-transform hover:-translate-y-1"
 						:class="p.tint"
 						@click="index = patterns.findIndex((x) => x.title === p.title)"
 					>
-						<component :is="p.icon" class="size-8" :stroke-width="1.3" />
+						<component :is="p.icon" class="size-8" :stroke-width="1.3" aria-hidden="true" />
 						<span class="text-[15px] leading-tight">{{ p.title }}</span>
 					</button>
 				</div>
