@@ -8,11 +8,12 @@
 			)
 		"
 	>
+		<a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink">Skip to content</a>
 		<div class="flex items-center justify-between gap-4">
 			<NuxtLink :to="localePath('/')" class="text-[28px] max-md:text-[22px]" :aria-label="c.nav.home">
 				<SiteLogo />
 			</NuxtLink>
-			<nav class="hidden items-center gap-10 text-[17px] lg:flex">
+			<nav aria-label="Primary" class="hidden items-center gap-10 text-[17px] lg:flex">
 				<NuxtLink v-for="l in links" :key="l.to" :to="l.to" class="transition-opacity hover:opacity-70">{{ l.label }}</NuxtLink>
 			</nav>
 			<div class="flex items-center gap-3">
@@ -20,7 +21,7 @@
 					{{ c.nav.lang }}
 				</NuxtLink>
 				<NuxtLink :to="`${localePath('/')}#pasang`" class="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-[16px] text-ink transition-colors hover:bg-white/85 max-md:px-4 max-md:py-2 max-md:text-sm">
-					{{ c.nav.install }} <ArrowRight class="size-4" />
+					{{ c.nav.install }} <ArrowRight class="size-4" aria-hidden="true" />
 				</NuxtLink>
 			</div>
 		</div>

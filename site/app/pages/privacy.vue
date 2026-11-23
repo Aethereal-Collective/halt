@@ -1,5 +1,5 @@
 <template>
-	<main class="bg-ink pt-28 pb-24 text-white">
+	<main id="main-content" class="bg-ink pt-28 pb-24 text-white">
 		<!-- eslint-disable-next-line vue/no-v-html -- our own markdown, rendered at build time -->
 		<article class="policy mx-auto max-w-[760px] px-4" v-html="html" />
 	</main>

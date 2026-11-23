@@ -278,17 +278,13 @@ function esc(s) {
 	return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-// ---------- GitHub repo scan (ADR-0009) ----------
-// Runs only when the popup asks (user clicked "Scan"). Reads files from github.com with the user's own session, so
-// private repos they can open work too. The only hosts contacted are github.com and the raw.githubusercontent.com
-// redirect GitHub itself issues. File contents go to the service worker for scanning and nowhere else.
+// ---------- GitHub repo scan (ADR-0009, ADR-0011) ----------
+// Starts only when the user clicks "Scan" (card or popup). This tab does one small job: it asks github.com for the
+// repo archive with the user's own session (so private repos they can open work), reads the address GitHub redirects
+// to (a short-lived link on codeload.github.com), and hands that link to the background. The download and the scan
+// run in an offscreen document, so the tab can be closed. File contents never pass through this page.
 const GH = "https://github.com";
-const SCAN_LIMITS = { files: 200, fileBytes: 200_000, totalBytes: 3_000_000, concurrency: 6 };
 const NOT_A_REPO = new Set(["settings", "orgs", "organizations", "marketplace", "features", "topics", "explore", "notifications", "login", "sponsors", "pulls", "issues", "new", "search", "about", "pricing", "enterprise", "collections", "trending", "apps", "users", "codespaces", "dashboard", "account", "security", "readme", "customer-stories", "resources", "solutions", "site"]);
-const SCAN_TEXT = /\.(m?js|cjs|jsx|tsx?|py|sh|bash|ps1|bat|cmd|rb|php|go|java|json|ya?ml|toml|cfg|ini|html?)$|(^|\/)(Makefile|Dockerfile|\.npmrc)$/i;
-const SCAN_SKIP = /(^|\/)(node_modules|\.git)\/|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/;
-const SCAN_FIRST = [/(^|\/)package\.json$/, /(^|\/)\.vscode\/tasks\.json$/, /(^|\/)(setup\.py|Makefile|Dockerfile|\.npmrc)$/, /(^|\/)(config|server|app|index|main|utils?|helpers?|lib)[^/]*\.(m?js|cjs|ts|py)$/i];
-
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 	if (msg?.type === "repoInfo") {
 		const r = currentRepo();
@@ -314,66 +310,23 @@ function currentRepo() {
 
 const scanError = (code) => Object.assign(new Error(code), { code });
 
-async function ghFetch(path, headers) {
-	const r = await fetch(GH + path, { credentials: "same-origin", headers });
+async function ghFetch(path) {
+	const r = await fetch(GH + path, { credentials: "same-origin", cache: "no-store" });
 	const h = new URL(r.url).hostname;
-	if (h !== "github.com" && h !== "raw.githubusercontent.com") throw scanError("network");
+	if (h !== "github.com" && h !== "codeload.github.com") throw scanError("network");
 	return r;
 }
 
-async function listRepoFiles({ owner, repo, ref }) {
-	const r = await ghFetch(`/${owner}/${repo}/tree-list/${encodeURIComponent(ref)}`, { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" });
+// Asks GitHub for the archive, keeps only where it redirected to, and starts the background scan.
+async function requestArchiveScan(repo) {
+	const r = await ghFetch(`/${repo.owner}/${repo.repo}/archive/${encodeURIComponent(repo.ref)}.zip`);
+	r.body?.cancel().catch(() => {}); // only the address is needed here, not the bytes
 	if (r.status === 404) throw scanError("no_access");
 	if (r.status === 429) throw scanError("rate_limited");
 	if (!r.ok) throw scanError("unsupported");
-	const j = await r.json().catch(() => null);
-	const list = j?.paths ?? j?.items ?? j?.tree;
-	if (!Array.isArray(list)) throw scanError("unsupported");
-	return list.map((x) => (typeof x === "string" ? x : x?.path)).filter((p) => typeof p === "string");
-}
-
-// onProgress({ pct, phase, done, total }): 0-5% listing, 5-92% reading files, 92-100% analysis.
-async function scanCurrentRepo(repo, onProgress = () => {}) {
-	onProgress({ pct: 0, phase: "list", done: 0, total: 0 });
-	const all = await listRepoFiles(repo);
-	const wanted = all.filter((p) => SCAN_TEXT.test(p) && !SCAN_SKIP.test(p));
-	const prio = (p) => {
-		const i = SCAN_FIRST.findIndex((re) => re.test(p));
-		return i < 0 ? SCAN_FIRST.length : i;
-	};
-	const queue = wanted.sort((a, b) => prio(a) - prio(b)).slice(0, SCAN_LIMITS.files);
-	const total = queue.length;
-	let done = 0;
-	const tick = () => onProgress({ pct: 5 + Math.round((87 * done) / Math.max(total, 1)), phase: "files", done, total });
-	tick();
-
-	const files = [];
-	let bytes = 0;
-	let limited = false;
-	const worker = async () => {
-		for (let p; (p = queue.shift()) !== undefined && !limited && bytes < SCAN_LIMITS.totalBytes; ) {
-			try {
-				const r = await ghFetch(`/${repo.owner}/${repo.repo}/raw/${encodeURIComponent(repo.ref)}/${p.split("/").map(encodeURIComponent).join("/")}`);
-				if (r.status === 429) limited = true;
-				if (!r.ok || Number(r.headers.get("content-length")) > SCAN_LIMITS.fileBytes) continue;
-				const content = await r.text();
-				if (content.length > SCAN_LIMITS.fileBytes) continue;
-				bytes += content.length;
-				files.push({ path: p, content });
-			} catch {
-				// Skip unreadable files; the scan reports how many it could read.
-			}
-			done++;
-			tick();
-		}
-	};
-	await Promise.all(Array.from({ length: SCAN_LIMITS.concurrency }, worker));
-
-	if (!files.length) throw scanError(limited ? "rate_limited" : all.length ? "unsupported" : "empty");
-	onProgress({ pct: 92, phase: "analyze", done: total, total });
-	const result = await chrome.runtime.sendMessage({ type: "scanRepoFiles", files });
-	if (!result) throw scanError("network");
-	return { ok: true, name: `${repo.owner}/${repo.repo}`, ...result, fetched: files.length, total: all.length, partial: limited || files.length < wanted.length };
+	const res = await chrome.runtime.sendMessage({ type: "scanStart", repo: { owner: repo.owner, repo: repo.repo }, url: r.url });
+	if (!res?.ok) throw scanError(res?.error ?? "network");
+	return res;
 }
 
 // ---------- On-page scan card ----------
@@ -458,7 +411,7 @@ function renderPrompt(c) {
 function renderProgress(c) {
 	const S = SC();
 	c.pctText = h("b", { textContent: "0%" });
-	c.phaseText = h("span", { textContent: S.phaseList });
+	c.phaseText = h("span", { textContent: S.phaseStart });
 	c.barFill = h("span");
 	const bar = h("div", { className: "bar", role: "progressbar" }, c.barFill);
 	bar.setAttribute("aria-label", S.scanning);
@@ -472,17 +425,18 @@ function renderProgress(c) {
 		h("p", { className: "heading", textContent: S.scanning }),
 		bar,
 		h("p", { className: "pct" }, c.phaseText, c.pctText),
-		h("p", { className: "body", textContent: S.slow }),
+		h("p", { className: "body", textContent: S.background }),
 	);
 }
 
-function updateProgress(c, p) {
+function updateProgress(c, job) {
 	if (!c.bar) return;
 	const S = SC();
-	c.barFill.style.width = `${p.pct}%`;
-	c.bar.setAttribute("aria-valuenow", String(p.pct));
-	c.pctText.textContent = `${p.pct}%`;
-	c.phaseText.textContent = p.phase === "files" ? S.phaseFiles(p.done, p.total) : p.phase === "analyze" ? S.phaseAnalyze : S.phaseList;
+	const pct = job.pct ?? 0;
+	c.barFill.style.width = `${pct}%`;
+	c.bar.setAttribute("aria-valuenow", String(pct));
+	c.pctText.textContent = `${pct}%`;
+	c.phaseText.textContent = job.phase === "scan" ? S.phaseScan(job.done ?? 0, job.total ?? 0) : job.bytes ? S.phaseDownload(Math.round(job.bytes / 1e6)) : S.phaseStart;
 }
 
 function renderResult(c, res) {
@@ -497,15 +451,17 @@ function renderResult(c, res) {
 			h("code", { className: "mono", textContent: f.snippet }),
 		),
 	);
-	if (res.findings.length > SCAN_SHOWN) items.push(h("li", { textContent: S.more(res.findings.length - SCAN_SHOWN) }));
-	const note = [S.stats(res.fetched, res.total), res.partial && S.partial, S.note].filter(Boolean).join(" ");
+	if (res.findingsTotal > SCAN_SHOWN) items.push(h("li", { textContent: S.more(res.findingsTotal - SCAN_SHOWN) }));
 	c.bar = null;
+	// replaceChildren turns a null argument into the text "null", so only real nodes are passed.
 	c.box.replaceChildren(
-		cardHeader(LEVEL_COLOR[res.level], S.levels[res.level]),
-		h("p", { className: "repo mono", textContent: c.key }),
-		items.length ? h("ul", { className: "list" }, ...items) : null,
-		h("p", { className: "body", textContent: note }),
-		h("button", { className: "primary", type: "button", textContent: S.close, onclick: () => dismissCard(c) }),
+		...[
+			cardHeader(LEVEL_COLOR[res.level], S.levels[res.level]),
+			h("p", { className: "repo mono", textContent: c.key }),
+			items.length ? h("ul", { className: "list" }, ...items) : null,
+			h("p", { className: "body", textContent: globalThis.HALT_SCAN_NOTES(S, res).join(" ") }),
+			h("button", { className: "primary", type: "button", textContent: S.close, onclick: () => dismissCard(c) }),
+		].filter(Boolean),
 	);
 }
 
@@ -527,20 +483,17 @@ function runScan(repo) {
 	if (activeScan?.key === key) return activeScan.promise;
 	const promise = (async () => {
 		await langReady;
+		try {
+			sessionStorage.removeItem(`halt-scan-dismissed:${key}`);
+		} catch {
+			// Blocked storage only means the dismissal is not remembered.
+		}
 		const c = ensureCard(repo);
 		renderProgress(c);
-		const report = (p) => {
-			updateProgress(c, p);
-			try {
-				chrome.runtime.sendMessage({ type: "repoProgress", pct: p.pct }).catch(() => {});
-			} catch {
-				// Popup closed or extension reloaded: progress on the page card is enough.
-			}
-		};
 		try {
-			const res = await scanCurrentRepo(repo, report);
-			renderResult(c, res);
-			return res;
+			await requestArchiveScan(repo);
+			watchScan(c);
+			return { ok: true, started: true };
 		} catch (e) {
 			const code = e?.code ?? "network";
 			renderError(c, code);
@@ -553,7 +506,36 @@ function runScan(repo) {
 	return promise;
 }
 
+// Follows the background job on this card for as long as the tab is open. Closing the tab never stops the scan.
+function watchScan(c) {
+	clearInterval(c.timer);
+	const [owner, name] = c.key.split("/");
+	let fails = 0;
+	const tick = async () => {
+		if (!c.el.isConnected) return clearInterval(c.timer);
+		let job = null;
+		try {
+			job = await chrome.runtime.sendMessage({ type: "scanStatus", owner, name });
+			fails = 0;
+		} catch {
+			if (++fails >= 5) clearInterval(c.timer); // extension reloaded or unavailable
+			return;
+		}
+		if (!job) return;
+		if (job.state === "running") {
+			if (!c.bar) renderProgress(c);
+			return updateProgress(c, job);
+		}
+		clearInterval(c.timer);
+		if (job.state === "done") renderResult(c, job.result);
+		else renderError(c, job.error);
+	};
+	c.timer = setInterval(tick, 700);
+	tick();
+}
+
 // GitHub navigates without page loads (Turbo), so re-check on its events plus a light poll.
+let syncing = null;
 function syncScanCard() {
 	const r = currentRepo();
 	const key = r && repoKey(r);
@@ -561,9 +543,10 @@ function syncScanCard() {
 		if (!card.el.isConnected) document.documentElement.appendChild(card.el);
 		return;
 	}
+	if (card) clearInterval(card.timer);
 	card?.el.remove();
 	card = null;
-	if (!r) return;
+	if (!r || syncing === key) return;
 	let dismissed = false;
 	try {
 		dismissed = sessionStorage.getItem(`halt-scan-dismissed:${key}`) === "1";
@@ -571,10 +554,27 @@ function syncScanCard() {
 		// Treat blocked storage as "not dismissed".
 	}
 	if (dismissed) return;
-	langReady.then(() => {
-		const now = currentRepo();
-		if (now && repoKey(now) === key && !card) renderPrompt(ensureCard(now));
-	});
+	syncing = key;
+	langReady
+		.then(async () => {
+			let job = null;
+			try {
+				job = await chrome.runtime.sendMessage({ type: "scanStatus", owner: r.owner, name: r.repo });
+			} catch {
+				// No background answer: fall back to the plain prompt.
+			}
+			const now = currentRepo();
+			if (!now || repoKey(now) !== key || card) return;
+			const c = ensureCard(now);
+			if (job?.state === "running") {
+				renderProgress(c);
+				watchScan(c);
+			} else if (job?.state === "done") renderResult(c, job.result);
+			else renderPrompt(c);
+		})
+		.finally(() => {
+			syncing = null;
+		});
 }
 
 if (location.hostname === "github.com") {

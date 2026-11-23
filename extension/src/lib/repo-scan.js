@@ -7,7 +7,9 @@ export const SEVERITY = { MEDIUM: "medium", HIGH: "high" };
 export const LEVEL = { NONE: "none", WARN: "warn", DANGER: "danger" };
 
 const SKIP_PATH = /(^|\/)(node_modules|\.git)\/|(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock)$|\.(png|jpe?g|gif|webp|ico|svg|woff2?|ttf|pdf|zip|gz|mp[34]|map)$/i;
-const CODE_PATH = /\.(m?js|cjs|jsx|tsx?|py|sh|bash|zsh|ps1|bat|cmd|rb|php|go|java|json|ya?ml|toml|cfg|ini|html?)$/i;
+// Files whose lines are scanned. Docs (md, txt) are left out on purpose: READMEs legitimately contain `curl | sh`.
+// Extensionless files that run code are listed by name (Makefile, Dockerfile, git hooks in .husky/).
+const CODE_PATH = /\.(m?js|cjs|jsx|tsx?|mts|cts|vue|svelte|astro|py|sh|bash|zsh|ps1|bat|cmd|rb|php|go|java|kts?|gradle|lua|pl|json|ya?ml|toml|cfg|ini|html?)$|(^|\/)(Makefile|Dockerfile|\.npmrc|\.husky\/[^/]+)$/i;
 const MAX_LINE = 4000; // Longer lines are only length-checked, not regex-scanned.
 
 const INSTALL_HOOKS = ["preinstall", "install", "postinstall", "prepare", "prepublish", "prepack", "postpack"];
@@ -132,6 +134,23 @@ export function scanRepo(files) {
 		scanLines(path, content, findings, isConfig);
 	}
 
+	return summarize(findings, skipped);
+}
+
+// True when scanRepo would look inside this path. Lets a caller skip unpacking files nobody will scan.
+export function isScannable(path) {
+	return !SKIP_PATH.test(path) && CODE_PATH.test(path);
+}
+
+// Findings are per file, so results of separate batches can be merged without losing anything.
+export function mergeScans(parts) {
+	return summarize(
+		parts.flatMap((p) => p.findings),
+		parts.reduce((n, p) => n + p.skipped, 0),
+	);
+}
+
+function summarize(findings, skipped) {
 	const level = findings.some((f) => f.severity === SEVERITY.HIGH) ? LEVEL.DANGER : findings.length ? LEVEL.WARN : LEVEL.NONE;
 	findings.sort((a, b) => rank(b.severity) - rank(a.severity) || a.path.localeCompare(b.path) || a.line - b.line);
 	return { level, findings, skipped };

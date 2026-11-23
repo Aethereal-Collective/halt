@@ -24,9 +24,11 @@
 			#scan { appearance: none; border: 0; cursor: pointer; margin-top: 12px; width: 100%; font: 700 14px/1 HaltSans, ui-sans-serif, system-ui, sans-serif; color: #0a0a0a; background: #f0f0f0; border-radius: 999px; padding: 13px 20px; }
 			#scan:hover { background: #fff; }
 			#scan:disabled { background: #404040; color: #a3a3a3; cursor: default; }
-			.bar { margin-top: 10px; height: 4px; border-radius: 999px; background: #262626; overflow: hidden; }
+			.bar { appearance: none; display: block; width: 100%; border: 0 solid; margin-top: 10px; height: 4px; border-radius: 999px; background: #262626; overflow: clip; }
 			.bar[hidden] { display: none; }
-			.bar span { display: block; height: 100%; width: 0; background: #f0f0f0; transition: width .2s; }
+			.bar::-webkit-progress-bar { background: transparent; }
+			.bar::-webkit-progress-value { background: #f0f0f0; border-radius: 999px; transition: inline-size .2s; }
+			.bar::-moz-progress-bar { background: #f0f0f0; border-radius: 999px; transition: inline-size .2s; }
 			.scan-status { margin-top: 14px; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
 			.scan-status .dot { background: #525252; }
 			.scan-status.none .dot { background: #22c55e; } .scan-status.warn .dot { background: #eab308; } .scan-status.danger .dot { background: #ef4444; }
@@ -37,6 +39,14 @@
 			#findings .where { display: block; margin-top: 3px; color: #737373; word-break: break-all; }
 			#findings code { display: block; margin-top: 3px; color: #a3a3a3; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
 			.scan-note { margin-top: 10px; font-size: 12px; color: #737373; }
+			#scanOut { padding: 18px; border-top: 1px solid #1c1c1c; }
+			#scanOut .scan-status { margin-top: 6px; }
+			#recent { padding: 14px 18px; border-top: 1px solid #1c1c1c; }
+			#recentList { list-style: none; padding: 0; margin-top: 4px; }
+			#recentList button { appearance: none; border: 0; border-bottom: 1px solid #1c1c1c; background: none; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 0; color: #a3a3a3; font: 500 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: left; word-break: break-all; }
+			#recentList button[aria-current="true"] { color: #f0f0f0; }
+			#recentList .lv { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #525252; }
+			#recentList .lv.none { background: #22c55e; } #recentList .lv.warn { background: #eab308; } #recentList .lv.danger { background: #ef4444; } #recentList .lv.run { background: #f0f0f0; }
 			footer { padding: 14px 18px 16px; border-top: 1px solid #1c1c1c; font-size: 12px; color: #525252; }
 			footer a { display: inline-block; margin-bottom: 8px; color: #d4d4d4; font-weight: 600; text-underline-offset: 3px; }
 			button:focus-visible, a:focus-visible { outline: 2px solid #f0f0f0; outline-offset: 2px; }
@@ -49,25 +59,31 @@
 				<span>halt</span>
 			</div>
 			<div class="lang" role="group" id="lang">
-				<button data-lang="id" aria-pressed="false">ID</button>
-				<button data-lang="en" aria-pressed="false">EN</button>
+				<button type="button" data-lang="id" aria-pressed="false">ID</button>
+				<button type="button" data-lang="en" aria-pressed="false">EN</button>
 			</div>
 		</header>
 		<main id="main">
 			<p class="label" id="statusLabel"></p>
-			<p class="status" id="status"><span class="dot"></span><span id="statusText"></span></p>
+			<p class="status" id="status"><span class="dot" aria-hidden="true"></span><span id="statusText"></span></p>
 			<p class="host mono" id="host"></p>
 		</main>
 		<section id="repo" hidden>
 			<p class="label" id="repoLabel"></p>
 			<p class="repo-name mono" id="repoName"></p>
 			<button id="scan" type="button"></button>
-			<div class="bar" id="scanBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span></span></div>
-			<div id="scanOut" role="status" aria-live="polite">
-				<p class="scan-status" id="scanStatus"></p>
-				<ul id="findings"></ul>
-				<p class="scan-note" id="scanNote"></p>
-			</div>
+		</section>
+		<section id="scanOut" role="status" aria-live="polite" hidden>
+			<p class="label" id="outName"></p>
+			<p class="scan-status" id="scanStatus"></p>
+			<progress class="bar" id="scanBar" value="0" max="100" aria-labelledby="scanStatus" hidden></progress>
+			<p class="scan-note" id="phaseText"></p>
+			<ul id="findings"></ul>
+			<p class="scan-note" id="scanNote"></p>
+		</section>
+		<section id="recent" hidden>
+			<p class="label" id="recentLabel"></p>
+			<ul id="recentList"></ul>
 		</section>
 		<footer>
 			<a id="report" href="#" target="_blank" rel="noopener noreferrer"></a>

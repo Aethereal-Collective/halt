@@ -50,68 +50,121 @@ $("lang").addEventListener("click", async (e) => {
 	render();
 });
 
-// ---------- Repo scan ----------
+// ---------- Repo scan (ADR-0011) ----------
+// The scan runs in the background, so this popup only starts it and then shows the job state kept by the service
+// worker. Opening Halt later, on any tab, shows the same result.
 // Only on github.com repo pages: the content script answers repoInfo there, other pages have no receiver.
 const repo = tab ? await chrome.tabs.sendMessage(tab.id, { type: "repoInfo" }).catch(() => null) : null;
-let scanState = null; // null | "busy" | { ok, ... } result from the content script
-let scanPct = 0;
+const repoKey = repo ? `scan:${repo.name}`.toLowerCase() : null;
 const MAX_SHOWN = 25;
+let jobs = []; // newest first
+let focusKey = repoKey; // the job shown in detail
+let starting = false; // between the click and the first job update
+let startError = null; // error from the click itself (no access, another scan running, ...)
 
-function renderScan() {
-	$("repo").hidden = !repo;
-	if (!repo) return;
-	const s = SCAN_COPY[COPY[lang] ? lang : "id"];
-	$("repoLabel").textContent = s.label;
-	$("repoName").textContent = repo.name;
-	$("scan").textContent = scanState === "busy" ? `${s.scanning} ${scanPct}%` : s.button;
-	const bar = $("scanBar");
-	bar.hidden = scanState !== "busy";
-	bar.firstElementChild.style.width = `${scanPct}%`;
-	bar.setAttribute("aria-valuenow", String(scanPct));
-	$("scan").disabled = scanState === "busy";
-	const status = $("scanStatus");
-	const list = $("findings");
-	list.replaceChildren();
-	$("scanNote").textContent = "";
-	status.textContent = "";
-	status.className = "scan-status";
-	if (!scanState || scanState === "busy") return;
+const sc = () => SCAN_COPY[COPY[lang] ? lang : "id"];
+const jobOf = (key) => jobs.find((j) => j.key === key);
+const anyRunning = () => jobs.some((j) => j.state === "running");
+const node = (tag, props = {}, ...kids) => {
+	const n = Object.assign(document.createElement(tag), props);
+	n.append(...kids);
+	return n;
+};
 
-	const dot = Object.assign(document.createElement("span"), { className: "dot" });
-	if (!scanState.ok) {
-		status.append(dot, s.errors[scanState.error] ?? s.errors.network);
-		return;
-	}
-	status.classList.add(scanState.level);
-	status.append(dot, s.levels[scanState.level]);
-	for (const f of scanState.findings.slice(0, MAX_SHOWN)) {
-		const li = document.createElement("li");
-		const sev = Object.assign(document.createElement("span"), { className: `sev ${f.severity}`, textContent: s.sev[f.severity] });
-		const where = Object.assign(document.createElement("span"), { className: "where mono", textContent: `${f.path}:${f.line}` });
-		const code = Object.assign(document.createElement("code"), { className: "mono", textContent: f.snippet });
-		li.append(sev, s.rules[f.rule] ?? f.rule, where, code);
-		list.append(li);
-	}
-	if (scanState.findings.length > MAX_SHOWN) {
-		list.append(Object.assign(document.createElement("li"), { textContent: s.more(scanState.findings.length - MAX_SHOWN) }));
-	}
-	$("scanNote").textContent = [s.stats(scanState.fetched, scanState.total), scanState.partial && s.partial, s.note].filter(Boolean).join(" ");
+async function refreshJobs() {
+	jobs = (await chrome.runtime.sendMessage({ type: "scanList" }).catch(() => null)) ?? [];
+	if (!repo && !jobOf(focusKey)) focusKey = jobs[0]?.key ?? null;
 }
 
-// The content script reports progress while it reads files; the same scan also shows on the page.
-chrome.runtime.onMessage.addListener((msg) => {
-	if (msg?.type !== "repoProgress" || scanState !== "busy") return;
-	scanPct = msg.pct;
-	renderScan();
-});
+function phaseLine(s, job) {
+	return job.phase === "scan" ? s.phaseScan(job.done ?? 0, job.total ?? 0) : job.bytes ? s.phaseDownload(Math.round(job.bytes / 1e6)) : s.phaseStart;
+}
+
+function renderScan() {
+	const s = sc();
+	$("repo").hidden = !repo;
+	if (repo) {
+		const mine = jobOf(repoKey);
+		$("repoLabel").textContent = s.label;
+		$("repoName").textContent = repo.name;
+		$("scan").textContent = starting || mine?.state === "running" ? s.scanning : s.button;
+		$("scan").disabled = starting || anyRunning();
+	}
+
+	const job = focusKey ? jobOf(focusKey) : null;
+	const showError = !job && startError;
+	$("scanOut").hidden = !(job || showError);
+	const status = $("scanStatus");
+	const bar = $("scanBar");
+	const list = $("findings");
+	status.textContent = "";
+	status.className = "scan-status";
+	list.replaceChildren();
+	bar.hidden = true;
+	$("phaseText").textContent = "";
+	$("scanNote").textContent = "";
+	if (showError) {
+		$("outName").textContent = repo?.name ?? "";
+		status.append(node("span", { className: "dot" }), s.errors[startError] ?? s.errors.network);
+	} else if (job) {
+		$("outName").textContent = job.name;
+		const dot = node("span", { className: "dot" });
+		if (job.state === "running") {
+			const pct = job.pct ?? 0;
+			status.append(dot, `${s.scanning} ${pct}%`);
+			bar.hidden = false;
+			bar.value = pct;
+			$("phaseText").textContent = phaseLine(s, job);
+			$("scanNote").textContent = s.background;
+		} else if (job.state === "error") {
+			status.append(dot, s.errors[job.error] ?? s.errors.network);
+		} else {
+			const res = job.result;
+			status.classList.add(res.level);
+			status.append(dot, s.levels[res.level]);
+			for (const f of res.findings.slice(0, MAX_SHOWN)) {
+				list.append(
+					node("li", {}, node("span", { className: `sev ${f.severity}`, textContent: s.sev[f.severity] }), s.rules[f.rule] ?? f.rule, node("span", { className: "where mono", textContent: `${f.path}:${f.line}` }), node("code", { className: "mono", textContent: f.snippet })),
+				);
+			}
+			if (res.findingsTotal > MAX_SHOWN) list.append(node("li", { textContent: s.more(res.findingsTotal - MAX_SHOWN) }));
+			$("scanNote").textContent = globalThis.HALT_SCAN_NOTES(s, res).join(" ");
+		}
+	}
+
+	$("recent").hidden = jobs.length === 0;
+	$("recentLabel").textContent = s.recent;
+	$("recentList").replaceChildren(
+		...jobs.map((j) => {
+			const level = j.state === "running" ? "run" : j.state === "error" ? "" : j.result.level;
+			const title = j.state === "running" ? s.scanning : j.state === "error" ? (s.errors[j.error] ?? "") : s.levels[j.result.level];
+			const b = node("button", { type: "button", title, onclick: () => ((focusKey = j.key), renderScan()) }, node("span", { className: `lv ${level}` }), j.name);
+			b.setAttribute("aria-current", String(j.key === focusKey));
+			b.setAttribute("aria-label", `${j.name}: ${title}`);
+			return node("li", {}, b);
+		}),
+	);
+}
 
 $("scan").addEventListener("click", async () => {
-	scanState = "busy";
-	scanPct = 0;
+	starting = true;
+	startError = null;
+	focusKey = repoKey;
 	renderScan();
-	scanState = await chrome.tabs.sendMessage(tab.id, { type: "repoScan" }).catch(() => ({ ok: false, error: "network" }));
+	const res = await chrome.tabs.sendMessage(tab.id, { type: "repoScan" }).catch(() => ({ ok: false, error: "network" }));
+	starting = false;
+	if (!res?.ok) startError = res?.error ?? "network";
+	await refreshJobs();
 	renderScan();
 });
 
+// While a scan runs (started here or earlier), follow it. This keeps working after the tab was closed.
+setInterval(async () => {
+	if (!starting && !anyRunning()) return;
+	await refreshJobs();
+	renderScan();
+}, 700);
+
 $("report").href = REPORT_URL;
+await refreshJobs();
 render();

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-08
 - Amends: ADR-0005, ADR-0008 (the "no network requests" rule)
+- Superseded in part by ADR-0011: files are no longer read one by one from the tab, the scan runs in the background from one in-memory archive, and `host_permissions` for `codeload.github.com` are now requested.
 
 ## Context
 Freelancers are being hacked through fake "test job" repositories: an install hook, an obfuscated loader, or a `.vscode/tasks.json` that runs when the folder opens. The warning is most useful on the GitHub page, before the repo is cloned or run. Many of these repos are private (shared with the victim only), so a public-API or server-side scanner would not work, and we do not want to hold user tokens or see their code.

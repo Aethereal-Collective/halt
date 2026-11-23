@@ -34,6 +34,18 @@ export default defineNuxtConfig({
 			script: [{ innerHTML: "document.documentElement.classList.add('js')" }],
 		},
 	},
+	routeRules: {
+		"/**": {
+			headers: {
+				"X-Content-Type-Options": "nosniff",
+				"Referrer-Policy": "strict-origin-when-cross-origin",
+				"X-Frame-Options": "DENY",
+				"Content-Security-Policy": "frame-ancestors 'none'",
+				"Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+				"Permissions-Policy": "camera=(), geolocation=(), microphone=(), focus-without-user-activation=()",
+			},
+		},
+	},
 	// Every route is listed, so link crawling is off (it also raced on the prerender cache on Windows).
-	nitro: { prerender: { routes: ["/", "/privacy", "/en", "/en/privacy"], crawlLinks: false } },
+	nitro: { prerender: { routes: ["/", "/guide", "/privacy", "/en", "/en/guide", "/en/privacy"], crawlLinks: false } },
 });

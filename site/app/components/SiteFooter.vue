@@ -9,6 +9,9 @@
 					<div class="mt-10 flex flex-wrap gap-4"><InstallButton tone="glass" /></div>
 				</div>
 				<ul class="flex flex-wrap gap-x-6 gap-y-3 pt-2 text-[17px]">
+					<li>
+						<NuxtLink :to="localePath('/guide')" class="opacity-90 transition-opacity hover:opacity-100 hover:underline">{{ locale === "en" ? "Anti-Phishing Guide" : "Panduan Anti-Phishing" }}</NuxtLink>
+					</li>
 					<li v-for="l in contact" :key="l.label">
 						<a :href="l.href" target="_blank" rel="noopener noreferrer" class="opacity-90 transition-opacity hover:opacity-100 hover:underline">{{ l.label }}</a>
 					</li>
@@ -16,7 +19,7 @@
 			</div>
 
 			<!-- Extension window peeking up from the bottom edge, like the reference's phone. -->
-			<div class="absolute bottom-0 left-1/2 w-[300px] -translate-x-1/2 translate-y-[38%] max-lg:hidden">
+			<div aria-hidden="true" class="absolute bottom-0 left-1/2 w-[300px] -translate-x-1/2 translate-y-[38%] max-lg:hidden">
 				<MockExtensionWindow tone="light">
 					<div class="flex h-[300px] flex-col items-center justify-center gap-3 text-center">
 						<SiteLogo class="text-[30px] text-brand" />
@@ -27,7 +30,7 @@
 
 			<div class="absolute inset-x-[5vw] bottom-10 flex items-center justify-between text-[17px] max-lg:static max-lg:mt-16 max-lg:flex-col max-lg:items-start max-lg:gap-4">
 				<p>© {{ year }} Aethereal. {{ c.footer.rights }}</p>
-				<a href="#top" class="inline-flex items-center gap-2 hover:underline" @click.prevent="toTop">{{ c.footer.top }} <ArrowUp class="size-4" /></a>
+				<a href="#top" class="inline-flex items-center gap-2 hover:underline" @click.prevent="toTop">{{ c.footer.top }} <ArrowUp class="size-4" aria-hidden="true" /></a>
 			</div>
 		</div>
 	</footer>
@@ -37,6 +40,8 @@
 import { ArrowUp } from "@lucide/vue";
 
 const { reportUrl, email, social } = useAppConfig();
+const { locale } = useI18n();
+const localePath = useLocalePath();
 const year = new Date().getFullYear();
 const c = useCopy();
 // The header already links every section; the footer only has ways to reach us.
@@ -47,5 +52,8 @@ const contact = computed(() => [
 	{ label: "X", href: social.x },
 	{ label: "GitHub", href: social.github },
 ]);
-const toTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+const toTop = () => {
+	const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+};
 </script>

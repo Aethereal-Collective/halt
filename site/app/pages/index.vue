@@ -1,5 +1,5 @@
 <template>
-	<main>
+	<main id="main-content">
 		<SectionHero />
 		<SectionOverview />
 		<SectionScrollWords />
@@ -47,6 +47,9 @@ useHead(() => ({
 					operatingSystem: "Chrome, Brave",
 					inLanguage: ["id", "en"],
 					offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+					keywords: locale.value === "en"
+						? "crypto anti-phishing extension, wallet drainer blocker, metamask security chrome extension, web3 phishing protection, permit2 guard"
+						: "ekstensi anti phishing kripto, blokir drainer wallet, keamanan metamask chrome, ekstensi keamanan kripto indonesia",
 					featureList: c.value.layers.cards.map((l) => `${l.title}: ${l.body}`),
 					publisher: ORG,
 				},

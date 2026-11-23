@@ -26,7 +26,7 @@ The check result for each tab is kept temporarily in your browser (`chrome.stora
 
 ## Where data is sent
 
-Nowhere. The extension has no server and sends nothing to us or anyone else. The one exception to "no network requests" is the optional GitHub repo scan: only when you click "Scan this repo" on a GitHub page, the extension reads that repo's files from github.com using your own logged-in session (so private repos you can open work too) and scans them on your device. File contents are never sent to us or any third party. The phishing list and detection model ship inside the extension and are updated through extension updates on the Chrome Web Store.
+Nowhere. The extension has no server and sends nothing to us or anyone else. The one exception to "no network requests" is the optional GitHub repo scan: only when you click "Scan this repo" on a GitHub page, the extension asks GitHub for that repo's archive using your own logged-in session (so private repos you can open work too), downloads the archive from codeload.github.com into browser memory, and scans it on your device. The scan runs in the background, so you can close the tab. The archive is not saved as a file, not extracted to a folder, and never run. The scan result (file names, line numbers and short code snippets) is kept temporarily in browser memory and disappears when the browser closes. Repo contents are never sent to us or any third party. The phishing list and detection model ship inside the extension and are updated through extension updates on the Chrome Web Store.
 
 The "Report" link only opens our community page in a new tab; anything you write there is subject to that platform's policies.
 
